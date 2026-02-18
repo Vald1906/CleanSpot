@@ -17,7 +17,7 @@ export default function NavBar() {
 
                 {/* Navigation Links */}
                 <div className="hidden md:flex items-center gap-8">
-                    <a className="text-white/80 hover:text-white transition-colors text-sm font-medium" href="/">Fil d'actualité</a>
+                    <a className="text-white/80 hover:text-white transition-colors text-sm font-medium" href="/dashboard">Fil d'actualité</a>
                     <a className="text-white/80 hover:text-white transition-colors text-sm font-medium" href="/map">Carte</a>
                     <a className="text-white font-semibold text-sm relative" href="/event">
                         Événements
