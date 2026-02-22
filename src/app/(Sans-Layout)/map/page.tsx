@@ -1,74 +1,146 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import NavBar from "@/app/components/navbar";
+import { getSpotsFromDb } from "@/app/actions/spotActions";
 
 const MapComponent = dynamic(() => import('@/app/components/MapComponent'), {
     ssr: false,
-    loading: () => <div className="h-full w-full bg-slate-50 flex items-center justify-center">Initialisation de CleanSpot...</div>
+    loading: () => (
+        <div className="h-full w-full bg-slate-50 flex items-center justify-center">
+            <p className="text-slate-400 animate-pulse font-medium">Initialisation de CleanSpot...</p>
+        </div>
+    )
 });
 
 export default function MapPage() {
     const [selectedSpot, setSelectedSpot] = useState<any>(null);
+    const [dbSpots, setDbSpots] = useState<any[]>([]);
+    const [searchQuery, setSearchQuery] = useState("");
+    const [mounted, setMounted] = useState(false);
+    const [copied, setCopied] = useState(false);
+
+    useEffect(() => {
+        setMounted(true);
+        const loadData = async () => {
+            const res = await getSpotsFromDb();
+            if (res.success) {
+                setDbSpots(res.data);
+            }
+        };
+        loadData();
+    }, []);
+
+    const handleCopyAddress = (address: string) => {
+        if (!address) return;
+
+        // Tentative avec l'API moderne
+        if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(address)
+                .then(() => {
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2000);
+                })
+                .catch(() => fallbackCopy(address));
+        } else {
+            // Méthode de secours pour HTTP ou navigateurs anciens
+            fallbackCopy(address);
+        }
+    };
+
+    const fallbackCopy = (text: string) => {
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        textArea.style.position = "fixed";
+        textArea.style.left = "-9999px";
+        textArea.style.top = "0";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        try {
+            document.execCommand('copy');
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        } catch (err) {
+            console.error("Impossible de copier", err);
+        }
+        document.body.removeChild(textArea);
+    };
+
+    const filteredSpots = dbSpots.filter((spot) => {
+        const searchLower = searchQuery.toLowerCase();
+        return (
+            spot.title?.toLowerCase().includes(searchLower) ||
+            spot.address?.toLowerCase().includes(searchLower) ||
+            spot.type?.toLowerCase().includes(searchLower)
+        );
+    });
+
+    if (!mounted) return null;
 
     return (
         <div className="flex h-screen w-full bg-[#F8FAFC] overflow-hidden font-sans relative">
             <div className="absolute inset-0 z-0">
                 <NavBar />
-                <MapComponent onSelectSpot={setSelectedSpot} selectedSpot={selectedSpot} />
+                <MapComponent
+                    key={searchQuery ? 'filtered' : 'initial'}
+                    onSelectSpot={setSelectedSpot}
+                    selectedSpot={selectedSpot}
+                    dbSpots={filteredSpots}
+                />
             </div>
 
-            {/* Header / Barre de recherche minimaliste */}
-            <div className="absolute top-20 left-8 z-10">
-                <div className="bg-white/80 backdrop-blur-xl p-2 rounded-3xl shadow-sm border border-slate-200/50 flex items-center gap-4 px-6 h-16 w-[400px]">
-
+            <div className="absolute top-24 left-8 z-10">
+                <div className="bg-white/80 backdrop-blur-xl p-2 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-200/50 flex items-center gap-4 px-6 h-16 w-[400px] transition-all focus-within:ring-2 focus-within:ring-emerald-500/20">
                     <div className="flex items-center justify-center text-slate-400">
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                         </svg>
                     </div>
-
                     <div className="h-6 w-[1px] bg-slate-200"></div>
-
                     <input
                         type="text"
-                        placeholder="Explorer Paris..."
+                        placeholder="Rechercher un lieu, un événement..."
                         className="bg-transparent border-none outline-none text-slate-600 placeholder:text-slate-400 flex-grow text-sm"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
                     />
+                    {searchQuery && (
+                        <button
+                            onClick={() => setSearchQuery("")}
+                            className="text-slate-400 hover:text-rose-500 transition-colors"
+                        >
+                            <span className="text-xl">×</span>
+                        </button>
+                    )}
                 </div>
             </div>
 
-            {/* Popup Flottante */}
             {selectedSpot && (
-                <div className="absolute inset-y-0 right-0 z-20 flex items-center p-6 pointer-events-none">
-                    <aside className="w-[360px] bg-white rounded-[32px] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 overflow-hidden flex flex-col pointer-events-auto animate-in fade-in slide-in-from-right-8 duration-500">
-
-                        {/* Zone Image */}
+                <div className="absolute inset-y-0 right-0 z-20 flex items-start p-6 pt-32 pointer-events-none">
+                    <aside className="w-[360px] bg-white rounded-[32px] shadow-[0_20px_50px_rgba(0,0,0,0.1)] border border-slate-100 overflow-hidden flex flex-col pointer-events-auto animate-in fade-in slide-in-from-right-8 duration-500">
                         <div className="relative h-48 w-full bg-slate-100">
                             <img
-                                src={selectedSpot.image}
+                                src={selectedSpot.image || "https://images.unsplash.com/photo-1532996122724-e3c354a0b15b?q=80&w=400"}
                                 alt={selectedSpot.title}
                                 className="w-full h-full object-cover"
                             />
                             <button
                                 onClick={() => setSelectedSpot(null)}
-                                className="absolute top-4 right-4 w-8 h-8 bg-white/80 backdrop-blur-sm rounded-full flex items-center justify-center text-slate-600 hover:bg-white transition-all shadow-sm"
+                                className="absolute top-4 right-4 w-10 h-10 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center text-slate-600 hover:text-rose-500 transition-all shadow-md"
                             >
-                                <span className="text-xl font-light">×</span>
+                                <span className="text-2xl font-light">×</span>
                             </button>
                         </div>
 
-                        {/* Contenu */}
                         <div className="p-6 flex flex-col gap-4">
-                            {/* Auteur */}
                             <div>
                                 <div className="flex items-center gap-2 mb-2">
-                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${selectedSpot.color} ${selectedSpot.accent}`}>
+                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${selectedSpot.color || 'bg-slate-100'} ${selectedSpot.accent || 'text-slate-600'}`}>
                                         {selectedSpot.type}
                                     </span>
-                                    {/* L'adresse */}
-                                    <span className="text-[10px] text-slate-400 font-medium truncate italic">
+                                    <span className="text-[10px] text-slate-400 font-medium truncate italic max-w-[180px]">
                                         📍 {selectedSpot.address}
                                     </span>
                                 </div>
@@ -78,64 +150,54 @@ export default function MapPage() {
                                 </h2>
 
                                 <p className="text-xs text-slate-400 mt-1">
-                                    Par <span className="text-slate-600 font-medium">{selectedSpot.author}</span>
-                                    {selectedSpot.type !== 'Event' && (
+                                    Posté par <span className="text-slate-600 font-medium">{selectedSpot.author}</span>
+                                    {selectedSpot.date && (
                                         <> • {new Date(selectedSpot.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}</>
                                     )}
                                 </p>
                             </div>
 
-                            {/* BLOC SPÉCIFIQUE ÉVÉNEMENT : Date et Heure de rendez-vous */}
-                            {selectedSpot.type === 'Event' && (
+                            {selectedSpot.type === 'Event' && selectedSpot.date && (
                                 <div className="bg-emerald-50/50 border border-emerald-100 rounded-2xl p-3 flex items-center justify-around">
                                     <div className="text-center">
                                         <p className="text-[9px] uppercase tracking-widest text-emerald-600 font-bold">Date</p>
                                         <p className="text-sm font-semibold text-emerald-900">
-                                            {new Date(selectedSpot.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                            {new Date(selectedSpot.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
                                         </p>
                                     </div>
                                     <div className="w-[1px] h-8 bg-emerald-200/50"></div>
                                     <div className="text-center">
-                                        <p className="text-[9px] uppercase tracking-widest text-emerald-600 font-bold">Rendez-vous</p>
-                                        <p className="text-sm font-semibold text-emerald-900">{selectedSpot.hours}</p>
+                                        <p className="text-[9px] uppercase tracking-widest text-emerald-600 font-bold">Heure</p>
+                                        <p className="text-sm font-semibold text-emerald-900">{selectedSpot.hours || "14:00"}</p>
                                     </div>
                                 </div>
                             )}
 
-                            {/* Heures Point de Tri  */}
-                            {selectedSpot.type === 'Point de Tri' && selectedSpot.hours && (
-                                <div className="flex items-center gap-2 text-slate-500 bg-slate-50 w-fit px-3 py-1 rounded-lg border border-slate-100">
-                                    <span className="text-xs">🕒 Accès :</span>
-                                    <span className="text-xs font-semibold">{selectedSpot.hours}</span>
-                                </div>
-                            )}
-
-                            <p className="text-sm text-slate-500 leading-relaxed italic">
-                                "{selectedSpot.desc}"
+                            <p className="text-sm text-slate-500 leading-relaxed italic border-l-2 border-slate-100 pl-4">
+                                "{selectedSpot.description || selectedSpot.desc || "Aucune description fournie."}"
                             </p>
 
-                            {/* Actions Dynamiques */}
                             <div className="flex flex-col gap-2 pt-2">
                                 {selectedSpot.type === 'Event' && (
-                                    <button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium py-3 rounded-2xl transition-all">
+                                    <button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium py-3 rounded-2xl shadow-lg shadow-emerald-200 transition-all">
                                         Participer à l'événement
                                     </button>
                                 )}
-
                                 {selectedSpot.type === 'Signalement' && (
-                                    <button className="w-full bg-rose-600 hover:bg-rose-700 text-white text-sm font-medium py-3 rounded-2xl transition-all">
-                                        Dépôt nettoyé ? Signaler ici
+                                    <button className="w-full bg-rose-600 hover:bg-rose-700 text-white text-sm font-medium py-3 rounded-2xl shadow-lg shadow-rose-200 transition-all">
+                                        Signaler comme résolu
                                     </button>
                                 )}
-
                                 {selectedSpot.type === 'Point de Tri' && (
-                                    <button className="w-full bg-slate-800 hover:bg-slate-900 text-white text-sm font-medium py-3 rounded-2xl transition-all flex items-center justify-center gap-2">
-                                        Voir l'itinéraire
+                                    <button className="w-full bg-slate-800 hover:bg-slate-900 text-white text-sm font-medium py-3 rounded-2xl transition-all">
+                                        Y aller maintenant
                                     </button>
                                 )}
-
-                                <button className="w-full bg-white border border-slate-200 text-slate-400 text-[10px] font-bold py-2 rounded-xl hover:bg-slate-50 transition-all uppercase tracking-widest">
-                                    Partager l'adresse
+                                <button
+                                    onClick={() => handleCopyAddress(selectedSpot.address)}
+                                    className={`w-full border text-[10px] font-bold py-2 rounded-xl transition-all uppercase tracking-widest ${copied ? 'bg-emerald-50 border-emerald-200 text-emerald-600' : 'bg-white border-slate-200 text-slate-400 hover:bg-slate-50'}`}
+                                >
+                                    {copied ? 'Adresse copiée !' : "Copier l'adresse"}
                                 </button>
                             </div>
                         </div>
