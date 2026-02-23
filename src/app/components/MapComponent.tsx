@@ -16,20 +16,17 @@ const getVisualsByType = (type: string) => {
 
 function RecenterMap({ spot }: { spot: any }) {
     const map = useMap();
-
     useEffect(() => {
         if (spot?.latitude && spot?.longitude) {
             map.flyTo([spot.latitude, spot.longitude], 16, { animate: true, duration: 1.5 });
         }
-        // Utiliser une clé unique combinée (ID + Timestamp) pour éviter les changements de taille de tableau
     }, [spot?.id, spot?._clickTimestamp, map]);
-
     return null;
 }
 
 function ZoomHandler({ onZoomChange }: { onZoomChange: (zoom: number) => void }) {
-    const map = useMapEvents({
-        zoomend: () => onZoomChange(map.getZoom()),
+    useMapEvents({
+        zoomend: (e) => onZoomChange(e.target.getZoom()),
     });
     return null;
 }
@@ -42,14 +39,11 @@ const MapContent = memo(({ onSelectSpot, selectedSpot, dbSpots, zoomLevel, setZo
             html: `
                 <div class="group relative flex items-center justify-center">
                     <div class="absolute w-12 h-12 ${colorClass} opacity-20 rounded-full 
-                                ${isActive ? 'animate-pulse' : 'animate-ping'} group-hover:opacity-40 transition-all duration-500">
-                    </div>
+                                ${isActive ? 'animate-pulse' : 'animate-ping'}"></div>
                     <div class="flex items-center justify-center w-11 h-11 ${colorClass} text-white 
                                 rounded-2xl shadow-lg border-2 border-white transform transition-all duration-300
-                                ${isActive ? 'scale-125 rotate-12 ring-4 ring-white/50 shadow-2xl' : 'scale-100'}
-                                group-hover:scale-115 group-hover:-translate-y-2 group-hover:rotate-3 
-                                group-hover:shadow-2xl group-hover:ring-2 group-hover:ring-white">
-                        <span class="text-xl transition-transform duration-300 group-hover:scale-110">${emoji}</span>
+                                ${isActive ? 'scale-125 rotate-12 ring-4 ring-white/50 shadow-2xl' : 'scale-100'}">
+                        <span class="text-xl">${emoji}</span>
                     </div>
                 </div>`,
             className: 'custom-marker',
@@ -64,32 +58,25 @@ const MapContent = memo(({ onSelectSpot, selectedSpot, dbSpots, zoomLevel, setZo
             zoom={13}
             zoomControl={false}
             style={{ height: "100%", width: "100%" }}
+            trackResize={true}
         >
             <TileLayer
-                url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-                attribution='&copy; CARTO'
+                url="https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png"
+                attribution='&copy; Stadia Maps'
             />
             <ZoomControl position="bottomleft" />
-
             <RecenterMap spot={selectedSpot} />
             <ZoomHandler onZoomChange={setZoomLevel} />
 
             {showMarkers && dbSpots?.map((spot: any) => {
-                if (!spot.latitude || !spot.longitude) return null;
                 const visuals = getVisualsByType(spot.type);
-                const isActive = selectedSpot?.id === spot.id;
-
                 return (
                     <Marker
-                        key={`spot-${spot.id}`}
+                        key={spot.id}
                         position={[spot.latitude, spot.longitude]}
-                        icon={createCustomIcon(visuals.icon, visuals.color, isActive)}
+                        icon={createCustomIcon(visuals.icon, visuals.color, selectedSpot?.id === spot.id)}
                         eventHandlers={{
-                            click: () => onSelectSpot({
-                                ...spot,
-                                ...visuals,
-                                _clickTimestamp: Date.now()
-                            })
+                            click: () => onSelectSpot({ ...spot, ...visuals, _clickTimestamp: Date.now() })
                         }}
                     />
                 );

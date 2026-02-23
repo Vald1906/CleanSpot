@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import NavBar from "@/app/components/navbar";
 import { getSpotsFromDb } from "@/app/actions/spotActions";
@@ -34,8 +34,6 @@ export default function MapPage() {
 
     const handleCopyAddress = (address: string) => {
         if (!address) return;
-
-        // Tentative avec l'API moderne
         if (navigator.clipboard && window.isSecureContext) {
             navigator.clipboard.writeText(address)
                 .then(() => {
@@ -44,7 +42,6 @@ export default function MapPage() {
                 })
                 .catch(() => fallbackCopy(address));
         } else {
-            // Méthode de secours pour HTTP ou navigateurs anciens
             fallbackCopy(address);
         }
     };
@@ -68,14 +65,15 @@ export default function MapPage() {
         document.body.removeChild(textArea);
     };
 
-    const filteredSpots = dbSpots.filter((spot) => {
+    // Filtrage optimisé (Calculé à chaque changement de searchQuery)
+    const filteredSpots = useMemo(() => {
         const searchLower = searchQuery.toLowerCase();
-        return (
+        return dbSpots.filter((spot) => (
             spot.title?.toLowerCase().includes(searchLower) ||
             spot.address?.toLowerCase().includes(searchLower) ||
             spot.type?.toLowerCase().includes(searchLower)
-        );
-    });
+        ));
+    }, [searchQuery, dbSpots]);
 
     if (!mounted) return null;
 
@@ -83,14 +81,15 @@ export default function MapPage() {
         <div className="flex h-screen w-full bg-[#F8FAFC] overflow-hidden font-sans relative">
             <div className="absolute inset-0 z-0">
                 <NavBar />
+                {/* Suppression de la KEY dynamique pour éviter le reset à Paris */}
                 <MapComponent
-                    key={searchQuery ? 'filtered' : 'initial'}
                     onSelectSpot={setSelectedSpot}
                     selectedSpot={selectedSpot}
                     dbSpots={filteredSpots}
                 />
             </div>
 
+            {/* Ton UI de recherche d'origine */}
             <div className="absolute top-24 left-8 z-10">
                 <div className="bg-white/80 backdrop-blur-xl p-2 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-200/50 flex items-center gap-4 px-6 h-16 w-[400px] transition-all focus-within:ring-2 focus-within:ring-emerald-500/20">
                     <div className="flex items-center justify-center text-slate-400">
@@ -117,6 +116,7 @@ export default function MapPage() {
                 </div>
             </div>
 
+            {/* Ton ASIDE de détails d'origine complet */}
             {selectedSpot && (
                 <div className="absolute inset-y-0 right-0 z-20 flex items-start p-6 pt-32 pointer-events-none">
                     <aside className="w-[360px] bg-white rounded-[32px] shadow-[0_20px_50px_rgba(0,0,0,0.1)] border border-slate-100 overflow-hidden flex flex-col pointer-events-auto animate-in fade-in slide-in-from-right-8 duration-500">
@@ -144,11 +144,7 @@ export default function MapPage() {
                                         📍 {selectedSpot.address}
                                     </span>
                                 </div>
-
-                                <h2 className="text-xl font-semibold text-slate-800 leading-tight">
-                                    {selectedSpot.title}
-                                </h2>
-
+                                <h2 className="text-xl font-semibold text-slate-800 leading-tight">{selectedSpot.title}</h2>
                                 <p className="text-xs text-slate-400 mt-1">
                                     Posté par <span className="text-slate-600 font-medium">{selectedSpot.author}</span>
                                     {selectedSpot.date && (
@@ -157,6 +153,7 @@ export default function MapPage() {
                                 </p>
                             </div>
 
+                            {/* Section spécifique Event */}
                             {selectedSpot.type === 'Event' && selectedSpot.date && (
                                 <div className="bg-emerald-50/50 border border-emerald-100 rounded-2xl p-3 flex items-center justify-around">
                                     <div className="text-center">
