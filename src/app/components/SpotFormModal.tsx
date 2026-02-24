@@ -226,7 +226,7 @@ export default function SpotFormModal({
                         {/* Titre */}
                         <div>
                             <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2 block">
-                                Titre *
+                                Titre
                             </label>
                             <input
                                 type="text"
@@ -257,7 +257,7 @@ export default function SpotFormModal({
                         {/* Auteur */}
                         <div>
                             <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2 block">
-                                Auteur *
+                                Auteur
                             </label>
                             <input
                                 type="text"
@@ -273,7 +273,7 @@ export default function SpotFormModal({
                         {/* Adresse avec autocomplete */}
                         <div className="relative">
                             <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2 block">
-                                Adresse * <span className="normal-case font-normal">(ou cliquez sur la carte)</span>
+                                Adresse <span className="normal-case font-normal">(ou cliquez sur la carte)</span>
                             </label>
                             <div className="relative">
                                 <span className="material-icons-outlined absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-lg">location_on</span>
@@ -379,22 +379,76 @@ export default function SpotFormModal({
                             </div>
                         )}
 
-                        {/* Image URL */}
+                        {/* Image (Local Upload) */}
                         <div>
                             <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2 block">
-                                Image (URL)
+                                Photo du spot
                             </label>
-                            <input
-                                type="url"
-                                name="image"
-                                value={form.image}
-                                onChange={handleChange}
-                                placeholder="https://exemple.com/photo.jpg"
-                                className="w-full px-4 py-3 bg-muted/30 border border-muted rounded-xl text-sm text-[#1a2f28] placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-[#33a17b]/30 focus:border-[#33a17b] transition-all"
-                            />
-                            {form.image && (
-                                <div className="mt-2 rounded-xl overflow-hidden border border-muted h-32">
-                                    <img src={form.image} alt="Aperçu" className="w-full h-full object-cover" onError={(e) => (e.currentTarget.style.display = 'none')} />
+
+                            {!form.image ? (
+                                <div className="relative group">
+                                    <input
+                                        type="file"
+                                        accept="image/*"
+                                        onChange={(e) => {
+                                            const file = e.target.files?.[0];
+                                            if (file) {
+                                                const reader = new FileReader();
+                                                reader.onloadend = () => {
+                                                    setForm(prev => ({ ...prev, image: reader.result as string }));
+                                                };
+                                                reader.readAsDataURL(file);
+                                            }
+                                        }} 
+                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                    />
+                                    <div className="w-full py-8 border-2 border-dashed border-muted rounded-2xl flex flex-col items-center justify-center gap-2 bg-muted/10 group-hover:bg-muted/30 group-hover:border-[#33a17b] transition-all">
+                                        <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center text-muted-foreground group-hover:text-[#33a17b] shadow-sm transition-all">
+                                            <span className="material-icons-outlined">add_a_photo</span>
+                                        </div>
+                                        <p className="text-xs font-bold text-muted-foreground group-hover:text-[#1a2f28]">Cliquer pour ajouter une photo</p>
+                                        <p className="text-[10px] text-muted-foreground/60 tracking-tight">JPG, PNG ou GIF (max. 5Mo)</p>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="relative rounded-2xl overflow-hidden border border-muted group h-48">
+                                    <img src={form.image} alt="Aperçu" className="w-full h-full object-cover" />
+                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+                                        <button
+                                            type="button"
+                                            onClick={() => setForm(prev => ({ ...prev, image: '' }))}
+                                            className="w-10 h-10 bg-rose-500 text-white rounded-full flex items-center justify-center hover:bg-rose-600 transition-all shadow-lg"
+                                        >
+                                            <span className="material-icons-outlined text-lg">delete</span>
+                                        </button>
+                                        <div className="relative">
+                                            <input
+                                                type="file"
+                                                accept="image/*"
+                                                onChange={(e) => {
+                                                    const file = e.target.files?.[0];
+                                                    if (file) {
+                                                        const reader = new FileReader();
+                                                        reader.onloadend = () => {
+                                                            setForm(prev => ({ ...prev, image: reader.result as string }));
+                                                        };
+                                                        reader.readAsDataURL(file);
+                                                    }
+                                                }}
+                                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                            />
+                                            <button
+                                                type="button"
+                                                className="w-10 h-10 bg-white text-[#1a2f28] rounded-full flex items-center justify-center hover:bg-muted transition-all shadow-lg"
+                                            >
+                                                <span className="material-icons-outlined text-lg">edit</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className="absolute top-3 left-3 px-2 py-1 bg-black/50 backdrop-blur-md rounded-lg text-[10px] text-white font-bold flex items-center gap-1">
+                                        <span className="material-icons-outlined text-[12px]">check_circle</span>
+                                        Image sélectionnée
+                                    </div>
                                 </div>
                             )}
                         </div>

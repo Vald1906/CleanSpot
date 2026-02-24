@@ -2,6 +2,7 @@
 import { db } from "@/db/drizzle";
 import { spots } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { revalidatePath } from "next/cache";
 
 // ---------- READ ----------
 export async function getSpotsFromDb() {
@@ -44,6 +45,10 @@ export async function createSpot(spotData: {
         });
         // Drizzle MySQL retourne [ResultSetHeader, FieldPacket[]]
         const insertId = (result as any)[0]?.insertId;
+
+        revalidatePath("/event");
+        revalidatePath("/map");
+
         return { success: true, id: insertId };
     } catch (error) {
         console.error("Erreur création spot:", error);
@@ -84,6 +89,10 @@ export async function updateSpot(
         if (spotData.urgency !== undefined) updateData.urgency = spotData.urgency;
 
         await db.update(spots).set(updateData).where(eq(spots.id, id));
+
+        revalidatePath("/event");
+        revalidatePath("/map");
+
         return { success: true };
     } catch (error) {
         console.error("Erreur mise à jour spot:", error);
@@ -95,6 +104,10 @@ export async function updateSpot(
 export async function deleteSpot(id: number) {
     try {
         await db.delete(spots).where(eq(spots.id, id));
+
+        revalidatePath("/event");
+        revalidatePath("/map");
+
         return { success: true };
     } catch (error) {
         console.error("Erreur suppression spot:", error);

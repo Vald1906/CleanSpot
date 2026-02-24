@@ -1,4 +1,4 @@
-import { mysqlTable, varchar, json, datetime, int, text, double, mysqlEnum, date } from "drizzle-orm/mysql-core";
+import { mysqlTable, varchar, json, datetime, int, text, double, mysqlEnum, date, longtext } from "drizzle-orm/mysql-core";
 import { sql } from "drizzle-orm";
 
 export const users = mysqlTable("user", {
@@ -23,7 +23,7 @@ export const spots = mysqlTable("spots", {
     longitude: double("longitude").notNull(),
     address: varchar("address", { length: 255 }).notNull(),
 
-    image: varchar("image", { length: 500 }),
+    image: longtext("image"),
     date: date("date"),
     hours: varchar("hours", { length: 100 }),
     urgency: varchar("urgency", { length: 50 }),
