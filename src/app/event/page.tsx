@@ -2,13 +2,38 @@
 
 import { useState, useEffect } from 'react';
 import NavBar from "@/app/components/navbar";
-import { getSpotsFromDb, createSpot } from "@/app/actions/spotActions";
+import { getSpotsFromDb, createSpot, toggleParticipation, toggleFavorite, getParticipations, getComments, addComment } from "@/app/actions/spotActions";
 import SpotFormModal from "@/app/components/SpotFormModal";
+
+// Config des matières pour l'affichage
+const MATERIAL_VISUALS: Record<string, { icon: string; bg: string; text: string }> = {
+    'Plastique': { icon: 'recycling', bg: 'bg-blue-50', text: 'text-blue-600' },
+    'Verre': { icon: 'local_drink', bg: 'bg-orange-50', text: 'text-orange-600' },
+    'Compost': { icon: 'eco', bg: 'bg-emerald-50', text: 'text-emerald-600' },
+    'Papier/Carton': { icon: 'description', bg: 'bg-amber-50', text: 'text-amber-600' },
+    'Métaux': { icon: 'settings', bg: 'bg-slate-100', text: 'text-slate-600' },
+    'Textile': { icon: 'checkroom', bg: 'bg-pink-50', text: 'text-pink-600' },
+    'Autre': { icon: 'delete', bg: 'bg-purple-50', text: 'text-purple-600' },
+};
 
 export default function EventPage() {
     const [events, setEvents] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [showForm, setShowForm] = useState(false);
+
+    // Interactions sociales
+    const [participationCounts, setParticipationCounts] = useState<Record<number, number>>({});
+    const [userParticipations, setUserParticipations] = useState<Record<number, boolean>>({});
+    const [userFavorites, setUserFavorites] = useState<Record<number, boolean>>({});
+
+    // Commentaires
+    const [expandedComments, setExpandedComments] = useState<number | null>(null);
+    const [commentsMap, setCommentsMap] = useState<Record<number, any[]>>({});
+    const [commentInput, setCommentInput] = useState('');
+    const [commentAuthor, setCommentAuthor] = useState('');
+
+    // Nom utilisateur temporaire (pas d'auth)
+    const [userName] = useState('Utilisateur');
 
     useEffect(() => {
         loadEvents();
@@ -18,8 +43,20 @@ export default function EventPage() {
         setLoading(true);
         const res = await getSpotsFromDb();
         if (res.success) {
-            // Filtrer uniquement les événements
-            setEvents(res.data.filter((s: any) => s.type === 'Event'));
+            const eventsOnly = res.data.filter((s: any) => s.type === 'Event');
+            setEvents(eventsOnly);
+
+            // Charger les compteurs de participations
+            for (const ev of eventsOnly) {
+                const pRes = await getParticipations(ev.id);
+                if (pRes.success) {
+                    setParticipationCounts(prev => ({ ...prev, [ev.id]: pRes.count ?? 0 }));
+                    setUserParticipations(prev => ({
+                        ...prev,
+                        [ev.id]: (pRes.data ?? []).some((p: any) => p.userName === userName),
+                    }));
+                }
+            }
         }
         setLoading(false);
     };
@@ -28,6 +65,49 @@ export default function EventPage() {
         await createSpot(data);
         setShowForm(false);
         await loadEvents();
+    };
+
+    const handleParticipate = async (spotId: number) => {
+        const res = await toggleParticipation(spotId, userName);
+        if (res.success) {
+            setUserParticipations(prev => ({ ...prev, [spotId]: res.participating ?? false }));
+            setParticipationCounts(prev => ({
+                ...prev,
+                [spotId]: (prev[spotId] || 0) + (res.participating ? 1 : -1),
+            }));
+        }
+    };
+
+    const handleFavorite = async (spotId: number) => {
+        const res = await toggleFavorite(spotId, userName);
+        if (res.success) {
+            setUserFavorites(prev => ({ ...prev, [spotId]: res.favorited ?? false }));
+        }
+    };
+
+    const handleToggleComments = async (spotId: number) => {
+        if (expandedComments === spotId) {
+            setExpandedComments(null);
+            return;
+        }
+        setExpandedComments(spotId);
+        const res = await getComments(spotId);
+        if (res.success) {
+            setCommentsMap(prev => ({ ...prev, [spotId]: res.data }));
+        }
+    };
+
+    const handleAddComment = async (spotId: number) => {
+        if (!commentInput.trim() || !commentAuthor.trim()) return;
+        const res = await addComment(spotId, commentAuthor, commentInput);
+        if (res.success) {
+            setCommentInput('');
+            // Recharger les commentaires
+            const cRes = await getComments(spotId);
+            if (cRes.success) {
+                setCommentsMap(prev => ({ ...prev, [spotId]: cRes.data }));
+            }
+        }
     };
 
     const formatDate = (dateStr: string) => {
@@ -39,21 +119,6 @@ export default function EventPage() {
         };
     };
 
-    // Tags de déchets aléatoires pour la démo
-    const wasteTags = [
-        [
-            { label: 'Plastique', icon: 'recycling', bg: 'bg-blue-50', text: 'text-blue-600' },
-            { label: 'Verre', icon: 'local_drink', bg: 'bg-orange-50', text: 'text-orange-600' },
-        ],
-        [
-            { label: 'Plastique', icon: 'recycling', bg: 'bg-blue-50', text: 'text-blue-600' },
-            { label: 'Compost', icon: 'eco', bg: 'bg-emerald-50', text: 'text-emerald-600' },
-        ],
-        [
-            { label: 'Autre', icon: 'delete', bg: 'bg-purple-50', text: 'text-purple-600' },
-        ],
-    ];
-
     return (
         <div className="bg-muted text-foreground min-h-screen">
             <NavBar />
@@ -63,18 +128,12 @@ export default function EventPage() {
                     <div>
                         <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-4">Type de déchets</h3>
                         <div className="flex flex-wrap gap-2">
-                            <button className="flex items-center gap-2 px-3 py-2 bg-[#1a2f28] text-white rounded-lg text-xs font-bold transition-all shadow-sm">
-                                <span className="material-icons-outlined text-sm">recycling</span>
-                                Plastique
-                            </button>
-                            <button className="flex items-center gap-2 px-3 py-2 bg-white text-muted-foreground border border-muted rounded-lg text-xs font-bold hover:border-primary transition-all">
-                                <span className="material-icons-outlined text-sm">local_drink</span>
-                                Verre
-                            </button>
-                            <button className="flex items-center gap-2 px-3 py-2 bg-white text-muted-foreground border border-muted rounded-lg text-xs font-bold hover:border-primary transition-all">
-                                <span className="material-icons-outlined text-sm">eco</span>
-                                Compost
-                            </button>
+                            {Object.entries(MATERIAL_VISUALS).slice(0, 4).map(([label, mat]) => (
+                                <button key={label} className={`flex items-center gap-2 px-3 py-2 ${mat.bg} ${mat.text} rounded-lg text-xs font-bold hover:shadow-sm transition-all`}>
+                                    <span className="material-icons-outlined text-sm">{mat.icon}</span>
+                                    {label}
+                                </button>
+                            ))}
                         </div>
                     </div>
 
@@ -161,9 +220,14 @@ export default function EventPage() {
                     {/* Grille d'événements */}
                     {!loading && events.length > 0 && (
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                            {events.map((event, index) => {
+                            {events.map((event) => {
                                 const { month, day } = formatDate(event.date);
-                                const tags = wasteTags[index % wasteTags.length];
+                                const materials: string[] = event.materials ? (typeof event.materials === 'string' ? JSON.parse(event.materials) : event.materials) : [];
+                                const isFav = userFavorites[event.id] || false;
+                                const isParticipating = userParticipations[event.id] || false;
+                                const pCount = participationCounts[event.id] || 0;
+                                const spotComments = commentsMap[event.id] || [];
+                                const isCommentsOpen = expandedComments === event.id;
 
                                 return (
                                     <div key={event.id} className="bg-white rounded-2xl overflow-hidden shadow-sm border border-muted hover:shadow-md transition-shadow group flex flex-col">
@@ -179,8 +243,17 @@ export default function EventPage() {
                                                     <span className="block text-xl font-bold text-[#1a2f28] leading-tight">{day}</span>
                                                 </div>
                                             )}
-                                            <button className="absolute top-4 right-4 w-10 h-10 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center text-white hover:bg-white hover:text-red-500 transition-all">
-                                                <span className="material-icons-outlined text-xl">favorite_border</span>
+                                            {/* Bouton Favori */}
+                                            <button
+                                                onClick={() => handleFavorite(event.id)}
+                                                className={`absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center transition-all shadow-md ${isFav
+                                                        ? 'bg-red-500 text-white'
+                                                        : 'bg-white/20 backdrop-blur-md text-white hover:bg-white hover:text-red-500'
+                                                    }`}
+                                            >
+                                                <span className="material-icons-outlined text-xl">
+                                                    {isFav ? 'favorite' : 'favorite_border'}
+                                                </span>
                                             </button>
                                         </div>
                                         <div className="p-5 flex-1 flex flex-col">
@@ -194,19 +267,107 @@ export default function EventPage() {
                                             <p className="text-sm text-muted-foreground line-clamp-2 mb-4">
                                                 {event.description || 'Aucune description disponible.'}
                                             </p>
+
+                                            {/* Matières */}
                                             <div className="flex items-center justify-between mt-auto pt-4 border-t border-muted/50">
-                                                <div className="flex gap-2">
-                                                    {tags.map((tag, i) => (
-                                                        <div key={i} className={`flex items-center gap-1 px-2 py-0.5 ${tag.bg} ${tag.text} rounded-md text-[9px] font-bold uppercase tracking-wider`}>
-                                                            <span className="material-icons-outlined text-[10px]">{tag.icon}</span>
-                                                            {tag.label}
-                                                        </div>
-                                                    ))}
+                                                <div className="flex gap-2 flex-wrap">
+                                                    {materials.length > 0 ? (
+                                                        materials.map((mat: string) => {
+                                                            const vis = MATERIAL_VISUALS[mat] || { icon: 'help', bg: 'bg-gray-50', text: 'text-gray-600' };
+                                                            return (
+                                                                <div key={mat} className={`flex items-center gap-1 px-2 py-0.5 ${vis.bg} ${vis.text} rounded-md text-[9px] font-bold uppercase tracking-wider`}>
+                                                                    <span className="material-icons-outlined text-[10px]">{vis.icon}</span>
+                                                                    {mat}
+                                                                </div>
+                                                            );
+                                                        })
+                                                    ) : (
+                                                        <span className="text-[9px] text-muted-foreground italic">Aucune matière</span>
+                                                    )}
                                                 </div>
-                                                <button className="px-5 py-2.5 bg-[#1a2f28] text-white text-xs font-bold rounded-xl hover:bg-[#2a453c] transition-all shadow-sm">
-                                                    Participer
+                                            </div>
+
+                                            {/* Actions : Participer + Commentaires */}
+                                            <div className="flex gap-2 mt-3">
+                                                <button
+                                                    onClick={() => handleParticipate(event.id)}
+                                                    className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 ${isParticipating
+                                                            ? 'bg-[#33a17b] text-white shadow-md'
+                                                            : 'bg-[#1a2f28] text-white hover:bg-[#2a453c] shadow-sm'
+                                                        }`}
+                                                >
+                                                    <span className="material-icons-outlined text-sm">
+                                                        {isParticipating ? 'check_circle' : 'group_add'}
+                                                    </span>
+                                                    {isParticipating ? 'Inscrit !' : 'Participer'}
+                                                    {pCount > 0 && (
+                                                        <span className="ml-1 px-1.5 py-0.5 bg-white/20 rounded-full text-[9px]">
+                                                            {pCount}
+                                                        </span>
+                                                    )}
+                                                </button>
+                                                <button
+                                                    onClick={() => handleToggleComments(event.id)}
+                                                    className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${isCommentsOpen
+                                                            ? 'bg-[#1a2f28] text-white'
+                                                            : 'bg-muted/50 text-[#1a2f28] hover:bg-muted'
+                                                        }`}
+                                                >
+                                                    <span className="material-icons-outlined text-sm">chat_bubble_outline</span>
+                                                    {spotComments.length > 0 ? spotComments.length : ''}
                                                 </button>
                                             </div>
+
+                                            {/* Section commentaires dépliable */}
+                                            {isCommentsOpen && (
+                                                <div className="mt-4 pt-4 border-t border-muted/50 space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                                                    {spotComments.length === 0 && (
+                                                        <p className="text-xs text-muted-foreground text-center italic py-2">Aucun commentaire pour le moment</p>
+                                                    )}
+                                                    {spotComments.map((c: any) => (
+                                                        <div key={c.id} className="flex gap-2">
+                                                            <div className="w-7 h-7 bg-[#1a2f28] rounded-full flex items-center justify-center flex-shrink-0">
+                                                                <span className="text-white text-[10px] font-bold">{c.author?.[0]?.toUpperCase()}</span>
+                                                            </div>
+                                                            <div className="flex-1">
+                                                                <p className="text-[10px] font-bold text-[#1a2f28]">
+                                                                    {c.author}
+                                                                    <span className="font-normal text-muted-foreground ml-2">
+                                                                        {c.createdAt ? new Date(c.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : ''}
+                                                                    </span>
+                                                                </p>
+                                                                <p className="text-xs text-muted-foreground">{c.content}</p>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+
+                                                    {/* Formulaire d'ajout */}
+                                                    <div className="flex gap-2 pt-2">
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Votre nom"
+                                                            value={commentAuthor}
+                                                            onChange={(e) => setCommentAuthor(e.target.value)}
+                                                            className="w-24 px-3 py-2 bg-muted/30 border border-muted rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-[#33a17b]/30"
+                                                        />
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Écrire un commentaire..."
+                                                            value={commentInput}
+                                                            onChange={(e) => setCommentInput(e.target.value)}
+                                                            onKeyDown={(e) => e.key === 'Enter' && handleAddComment(event.id)}
+                                                            className="flex-1 px-3 py-2 bg-muted/30 border border-muted rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-[#33a17b]/30"
+                                                        />
+                                                        <button
+                                                            onClick={() => handleAddComment(event.id)}
+                                                            disabled={!commentInput.trim() || !commentAuthor.trim()}
+                                                            className="px-3 py-2 bg-[#1a2f28] text-white rounded-lg text-xs font-bold hover:bg-[#2a453c] transition-all disabled:opacity-40"
+                                                        >
+                                                            <span className="material-icons-outlined text-sm">send</span>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 );
@@ -236,7 +397,7 @@ export default function EventPage() {
                 </div>
             </main>
 
-            {/* Bouton FAB flottant pour créer un spot */}
+            {/* Bouton FAB flottant pour créer un spot (sans badge NEW) */}
             <div className="fixed bottom-8 right-8 z-30">
                 <button
                     onClick={() => setShowForm(true)}
@@ -244,9 +405,6 @@ export default function EventPage() {
                 >
                     <span className="material-icons-outlined text-3xl group-hover:rotate-90 transition-transform duration-300">add</span>
                 </button>
-                <div className="absolute -top-2 -right-2 w-6 h-6 bg-[#33a17b] rounded-full flex items-center justify-center animate-pulse">
-                    <span className="text-white text-[8px] font-bold">NEW</span>
-                </div>
             </div>
 
             {/* Modal de création de spot */}

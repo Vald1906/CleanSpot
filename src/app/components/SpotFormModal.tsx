@@ -14,7 +14,18 @@ interface SpotFormData {
     date: string;
     hours: string;
     urgency: string;
+    materials: string[];
 }
+
+const MATERIAL_OPTIONS = [
+    { label: 'Plastique', icon: 'recycling', bg: 'bg-blue-50', text: 'text-blue-600', activeBg: 'bg-blue-500' },
+    { label: 'Verre', icon: 'local_drink', bg: 'bg-orange-50', text: 'text-orange-600', activeBg: 'bg-orange-500' },
+    { label: 'Compost', icon: 'eco', bg: 'bg-emerald-50', text: 'text-emerald-600', activeBg: 'bg-emerald-500' },
+    { label: 'Papier/Carton', icon: 'description', bg: 'bg-amber-50', text: 'text-amber-600', activeBg: 'bg-amber-500' },
+    { label: 'Métaux', icon: 'settings', bg: 'bg-slate-100', text: 'text-slate-600', activeBg: 'bg-slate-500' },
+    { label: 'Textile', icon: 'checkroom', bg: 'bg-pink-50', text: 'text-pink-600', activeBg: 'bg-pink-500' },
+    { label: 'Autre', icon: 'delete', bg: 'bg-purple-50', text: 'text-purple-600', activeBg: 'bg-purple-500' },
+];
 
 interface SpotFormModalProps {
     isOpen: boolean;
@@ -38,6 +49,7 @@ const emptyForm: SpotFormData = {
     date: '',
     hours: '',
     urgency: '',
+    materials: [],
 };
 
 export default function SpotFormModal({
@@ -69,6 +81,7 @@ export default function SpotFormModal({
                 date: initialData.date || '',
                 hours: initialData.hours || '',
                 urgency: initialData.urgency || '',
+                materials: (initialData as any).materials || [],
             });
         } else if (mode === 'create') {
             setForm(emptyForm);
@@ -221,6 +234,44 @@ export default function SpotFormModal({
                                     </button>
                                 ))}
                             </div>
+                        </div>
+
+                        {/* Types de matières */}
+                        <div>
+                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2 block">
+                                Types de matières
+                            </label>
+                            <div className="flex flex-wrap gap-2">
+                                {MATERIAL_OPTIONS.map((mat) => {
+                                    const isSelected = form.materials.includes(mat.label);
+                                    return (
+                                        <button
+                                            key={mat.label}
+                                            type="button"
+                                            onClick={() => {
+                                                setForm((prev) => ({
+                                                    ...prev,
+                                                    materials: isSelected
+                                                        ? prev.materials.filter((m) => m !== mat.label)
+                                                        : [...prev.materials, mat.label],
+                                                }));
+                                            }}
+                                            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all border-2 ${isSelected
+                                                    ? `${mat.activeBg} text-white border-transparent shadow-md`
+                                                    : `${mat.bg} ${mat.text} border-transparent hover:border-current`
+                                                }`}
+                                        >
+                                            <span className="material-icons-outlined text-sm">{mat.icon}</span>
+                                            {mat.label}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            {form.materials.length > 0 && (
+                                <p className="text-[10px] text-[#33a17b] font-medium mt-1.5">
+                                    {form.materials.length} matière(s) sélectionnée(s)
+                                </p>
+                            )}
                         </div>
 
                         {/* Titre */}
@@ -399,7 +450,7 @@ export default function SpotFormModal({
                                                 };
                                                 reader.readAsDataURL(file);
                                             }
-                                        }} 
+                                        }}
                                         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                                     />
                                     <div className="w-full py-8 border-2 border-dashed border-muted rounded-2xl flex flex-col items-center justify-center gap-2 bg-muted/10 group-hover:bg-muted/30 group-hover:border-[#33a17b] transition-all">

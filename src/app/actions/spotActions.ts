@@ -1,7 +1,7 @@
 "use server";
 import { db } from "@/db/drizzle";
-import { spots } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { spots, comments, participations, favorites } from "@/db/schema";
+import { eq, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 // ---------- READ ----------
@@ -28,6 +28,7 @@ export async function createSpot(spotData: {
     date?: string;
     hours?: string;
     urgency?: string;
+    materials?: string[];
 }) {
     try {
         const result = await db.insert(spots).values({
@@ -42,8 +43,8 @@ export async function createSpot(spotData: {
             date: spotData.date ? new Date(spotData.date) : null,
             hours: spotData.hours || null,
             urgency: spotData.urgency || null,
+            materials: spotData.materials || null,
         });
-        // Drizzle MySQL retourne [ResultSetHeader, FieldPacket[]]
         const insertId = (result as any)[0]?.insertId;
 
         revalidatePath("/event");
@@ -71,10 +72,10 @@ export async function updateSpot(
         date?: string;
         hours?: string;
         urgency?: string;
+        materials?: string[];
     }
 ) {
     try {
-        // Construire l'objet de mise à jour dynamiquement
         const updateData: Record<string, any> = {};
         if (spotData.type !== undefined) updateData.type = spotData.type;
         if (spotData.title !== undefined) updateData.title = spotData.title;
@@ -87,6 +88,7 @@ export async function updateSpot(
         if (spotData.date !== undefined) updateData.date = spotData.date;
         if (spotData.hours !== undefined) updateData.hours = spotData.hours;
         if (spotData.urgency !== undefined) updateData.urgency = spotData.urgency;
+        if (spotData.materials !== undefined) updateData.materials = spotData.materials;
 
         await db.update(spots).set(updateData).where(eq(spots.id, id));
 
@@ -103,6 +105,10 @@ export async function updateSpot(
 // ---------- DELETE ----------
 export async function deleteSpot(id: number) {
     try {
+        // Supprimer aussi les données liées
+        await db.delete(comments).where(eq(comments.spotId, id));
+        await db.delete(participations).where(eq(participations.spotId, id));
+        await db.delete(favorites).where(eq(favorites.spotId, id));
         await db.delete(spots).where(eq(spots.id, id));
 
         revalidatePath("/event");
@@ -111,6 +117,101 @@ export async function deleteSpot(id: number) {
         return { success: true };
     } catch (error) {
         console.error("Erreur suppression spot:", error);
+        return { success: false, error: String(error) };
+    }
+}
+
+// ========== COMMENTAIRES ==========
+
+export async function getComments(spotId: number) {
+    try {
+        const data = await db.select().from(comments).where(eq(comments.spotId, spotId));
+        return { success: true, data };
+    } catch (error) {
+        console.error("Erreur récupération commentaires:", error);
+        return { success: false, data: [] };
+    }
+}
+
+export async function addComment(spotId: number, author: string, content: string) {
+    try {
+        await db.insert(comments).values({ spotId, author, content });
+        revalidatePath("/event");
+        revalidatePath("/map");
+        return { success: true };
+    } catch (error) {
+        console.error("Erreur ajout commentaire:", error);
+        return { success: false, error: String(error) };
+    }
+}
+
+// ========== PARTICIPATIONS ==========
+
+export async function getParticipations(spotId: number) {
+    try {
+        const data = await db.select().from(participations).where(eq(participations.spotId, spotId));
+        return { success: true, data, count: data.length };
+    } catch (error) {
+        console.error("Erreur récupération participations:", error);
+        return { success: false, data: [], count: 0 };
+    }
+}
+
+export async function toggleParticipation(spotId: number, userName: string) {
+    try {
+        // Vérifie si déjà participant
+        const existing = await db.select().from(participations)
+            .where(and(eq(participations.spotId, spotId), eq(participations.userName, userName)));
+
+        if (existing.length > 0) {
+            await db.delete(participations)
+                .where(and(eq(participations.spotId, spotId), eq(participations.userName, userName)));
+            revalidatePath("/event");
+            revalidatePath("/map");
+            return { success: true, participating: false };
+        } else {
+            await db.insert(participations).values({ spotId, userName });
+            revalidatePath("/event");
+            revalidatePath("/map");
+            return { success: true, participating: true };
+        }
+    } catch (error) {
+        console.error("Erreur toggle participation:", error);
+        return { success: false, error: String(error) };
+    }
+}
+
+// ========== FAVORIS ==========
+
+export async function getFavorites(spotId: number) {
+    try {
+        const data = await db.select().from(favorites).where(eq(favorites.spotId, spotId));
+        return { success: true, data, count: data.length };
+    } catch (error) {
+        console.error("Erreur récupération favoris:", error);
+        return { success: false, data: [], count: 0 };
+    }
+}
+
+export async function toggleFavorite(spotId: number, userName: string) {
+    try {
+        const existing = await db.select().from(favorites)
+            .where(and(eq(favorites.spotId, spotId), eq(favorites.userName, userName)));
+
+        if (existing.length > 0) {
+            await db.delete(favorites)
+                .where(and(eq(favorites.spotId, spotId), eq(favorites.userName, userName)));
+            revalidatePath("/event");
+            revalidatePath("/map");
+            return { success: true, favorited: false };
+        } else {
+            await db.insert(favorites).values({ spotId, userName });
+            revalidatePath("/event");
+            revalidatePath("/map");
+            return { success: true, favorited: true };
+        }
+    } catch (error) {
+        console.error("Erreur toggle favori:", error);
         return { success: false, error: String(error) };
     }
 }

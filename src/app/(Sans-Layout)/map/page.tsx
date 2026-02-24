@@ -3,8 +3,18 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import NavBar from "@/app/components/navbar";
-import { getSpotsFromDb, createSpot, updateSpot, deleteSpot } from "@/app/actions/spotActions";
+import { getSpotsFromDb, createSpot, updateSpot, deleteSpot, toggleParticipation, toggleFavorite, getComments, addComment, getParticipations } from "@/app/actions/spotActions";
 import SpotFormModal from "@/app/components/SpotFormModal";
+
+const MATERIAL_VISUALS: Record<string, { icon: string; bg: string; text: string }> = {
+    'Plastique': { icon: 'recycling', bg: 'bg-blue-50', text: 'text-blue-600' },
+    'Verre': { icon: 'local_drink', bg: 'bg-orange-50', text: 'text-orange-600' },
+    'Compost': { icon: 'eco', bg: 'bg-emerald-50', text: 'text-emerald-600' },
+    'Papier/Carton': { icon: 'description', bg: 'bg-amber-50', text: 'text-amber-600' },
+    'Métaux': { icon: 'settings', bg: 'bg-slate-100', text: 'text-slate-600' },
+    'Textile': { icon: 'checkroom', bg: 'bg-pink-50', text: 'text-pink-600' },
+    'Autre': { icon: 'delete', bg: 'bg-purple-50', text: 'text-purple-600' },
+};
 
 const MapComponent = dynamic(() => import('@/app/components/MapComponent'), {
     ssr: false,
@@ -29,6 +39,16 @@ export default function MapPage() {
     const [pickingMode, setPickingMode] = useState(false);
     const [pickedPosition, setPickedPosition] = useState<{ lat: number; lng: number } | null>(null);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+    // Social state
+    const [isParticipating, setIsParticipating] = useState(false);
+    const [participantCount, setParticipantCount] = useState(0);
+    const [isFavorited, setIsFavorited] = useState(false);
+    const [spotComments, setSpotComments] = useState<any[]>([]);
+    const [showComments, setShowComments] = useState(false);
+    const [commentInput, setCommentInput] = useState('');
+    const [commentAuthor, setCommentAuthor] = useState('');
+    const [userName] = useState('Utilisateur');
 
     useEffect(() => {
         setMounted(true);
@@ -126,6 +146,53 @@ export default function MapPage() {
         document.body.removeChild(textArea);
     };
 
+    // --- Social Handlers ---
+    const loadSpotSocial = async (spotId: number) => {
+        const pRes = await getParticipations(spotId);
+        if (pRes.success) {
+            setParticipantCount(pRes.count ?? 0);
+            setIsParticipating((pRes.data ?? []).some((p: any) => p.userName === userName));
+        }
+        const cRes = await getComments(spotId);
+        if (cRes.success) {
+            setSpotComments(cRes.data);
+        }
+    };
+
+    const handleSelectSpot = (spot: any) => {
+        setSelectedSpot(spot);
+        setShowComments(false);
+        setCommentInput('');
+        loadSpotSocial(spot.id);
+    };
+
+    const handleParticipateMap = async () => {
+        if (!selectedSpot) return;
+        const res = await toggleParticipation(selectedSpot.id, userName);
+        if (res.success) {
+            setIsParticipating(res.participating ?? false);
+            setParticipantCount(prev => prev + (res.participating ? 1 : -1));
+        }
+    };
+
+    const handleFavoriteMap = async () => {
+        if (!selectedSpot) return;
+        const res = await toggleFavorite(selectedSpot.id, userName);
+        if (res.success) {
+            setIsFavorited(res.favorited ?? false);
+        }
+    };
+
+    const handleAddCommentMap = async () => {
+        if (!selectedSpot || !commentInput.trim() || !commentAuthor.trim()) return;
+        const res = await addComment(selectedSpot.id, commentAuthor, commentInput);
+        if (res.success) {
+            setCommentInput('');
+            const cRes = await getComments(selectedSpot.id);
+            if (cRes.success) setSpotComments(cRes.data);
+        }
+    };
+
     const filteredSpots = useMemo(() => {
         const searchLower = searchQuery.toLowerCase();
         return dbSpots.filter((spot) => (
@@ -148,7 +215,7 @@ export default function MapPage() {
             <div className="relative flex-1 overflow-hidden">
                 <div className="absolute inset-0 z-0">
                     <MapComponent
-                        onSelectSpot={setSelectedSpot}
+                        onSelectSpot={handleSelectSpot}
                         selectedSpot={selectedSpot}
                         dbSpots={filteredSpots}
                         pickingMode={pickingMode}
@@ -202,121 +269,209 @@ export default function MapPage() {
 
 
                 {/* Panneau de détails du spot sélectionné */}
-                {selectedSpot && !showForm && (
-                    <div className="absolute inset-y-0 right-0 z-20 flex items-start p-6 pt-6 pointer-events-none">
-                        <aside className="w-[360px] bg-white rounded-[32px] shadow-[0_20px_50px_rgba(0,0,0,0.1)] border border-slate-100 overflow-hidden flex flex-col pointer-events-auto animate-in fade-in slide-in-from-right-8 duration-500">
-                            <div className="relative h-48 w-full bg-slate-100">
-                                <img
-                                    src={selectedSpot.image || "https://images.unsplash.com/photo-1532996122724-e3c354a0b15b?q=80&w=400"}
-                                    alt={selectedSpot.title}
-                                    className="w-full h-full object-cover"
-                                />
-                                <button
-                                    onClick={() => setSelectedSpot(null)}
-                                    className="absolute top-4 right-4 w-10 h-10 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center text-slate-600 hover:text-rose-500 transition-all shadow-md"
-                                >
-                                    <span className="text-2xl font-light">×</span>
-                                </button>
-                            </div>
-
-                            <div className="p-6 flex flex-col gap-4">
-                                <div>
-                                    <div className="flex items-center gap-2 mb-2">
-                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${selectedSpot.color || 'bg-slate-100'} ${selectedSpot.accent || 'text-slate-600'}`}>
-                                            {selectedSpot.type}
-                                        </span>
-                                        <span className="text-[10px] text-slate-400 font-medium truncate italic max-w-[180px]">
-                                            📍 {selectedSpot.address}
-                                        </span>
-                                    </div>
-                                    <h2 className="text-xl font-semibold text-slate-800 leading-tight">{selectedSpot.title}</h2>
-                                    <p className="text-xs text-slate-400 mt-1">
-                                        Posté par <span className="text-slate-600 font-medium">{selectedSpot.author}</span>
-                                        {selectedSpot.date && (
-                                            <> • {new Date(selectedSpot.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}</>
-                                        )}
-                                    </p>
-                                </div>
-
-                                {/* Section spécifique Event */}
-                                {selectedSpot.type === 'Event' && selectedSpot.date && (
-                                    <div className="bg-emerald-50/50 border border-emerald-100 rounded-2xl p-3 flex items-center justify-around">
-                                        <div className="text-center">
-                                            <p className="text-[9px] uppercase tracking-widest text-emerald-600 font-bold">Date</p>
-                                            <p className="text-sm font-semibold text-emerald-900">
-                                                {new Date(selectedSpot.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
-                                            </p>
-                                        </div>
-                                        <div className="w-[1px] h-8 bg-emerald-200/50"></div>
-                                        <div className="text-center">
-                                            <p className="text-[9px] uppercase tracking-widest text-emerald-600 font-bold">Heure</p>
-                                            <p className="text-sm font-semibold text-emerald-900">{selectedSpot.hours || "14:00"}</p>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Urgence pour Signalement */}
-                                {selectedSpot.type === 'Signalement' && selectedSpot.urgency && (
-                                    <div className={`rounded-2xl p-3 flex items-center gap-2 ${selectedSpot.urgency === 'Urgent' ? 'bg-rose-50 border border-rose-100' :
-                                        selectedSpot.urgency === 'Moyen' ? 'bg-amber-50 border border-amber-100' :
-                                            'bg-blue-50 border border-blue-100'
-                                        }`}>
-                                        <span className="material-icons-outlined text-sm">warning</span>
-                                        <span className="text-xs font-bold">Urgence : {selectedSpot.urgency}</span>
-                                    </div>
-                                )}
-
-                                <p className="text-sm text-slate-500 leading-relaxed italic border-l-2 border-slate-100 pl-4">
-                                    &quot;{selectedSpot.description || selectedSpot.desc || "Aucune description fournie."}&quot;
-                                </p>
-
-                                <div className="flex flex-col gap-2 pt-2">
-                                    {/* Boutons d'action principaux */}
-                                    {selectedSpot.type === 'Event' && (
-                                        <button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium py-3 rounded-2xl shadow-lg shadow-emerald-200 transition-all">
-                                            Participer à l&apos;événement
-                                        </button>
-                                    )}
-                                    {selectedSpot.type === 'Signalement' && (
-                                        <button className="w-full bg-rose-600 hover:bg-rose-700 text-white text-sm font-medium py-3 rounded-2xl shadow-lg shadow-rose-200 transition-all">
-                                            Signaler comme résolu
-                                        </button>
-                                    )}
-                                    {selectedSpot.type === 'Point de Tri' && (
-                                        <button className="w-full bg-slate-800 hover:bg-slate-900 text-white text-sm font-medium py-3 rounded-2xl transition-all">
-                                            Y aller maintenant
-                                        </button>
-                                    )}
-
-                                    {/* Boutons Modifier / Supprimer */}
-                                    <div className="flex gap-2">
-                                        <button
-                                            onClick={handleOpenEdit}
-                                            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-[#1a2f28] text-white text-[11px] font-bold rounded-xl hover:bg-[#2a453c] transition-all"
-                                        >
-                                            <span className="material-icons-outlined text-sm">edit</span>
-                                            Modifier
-                                        </button>
-                                        <button
-                                            onClick={() => setShowDeleteConfirm(true)}
-                                            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-rose-50 text-rose-600 text-[11px] font-bold rounded-xl hover:bg-rose-100 transition-all border border-rose-200"
-                                        >
-                                            <span className="material-icons-outlined text-sm">delete</span>
-                                            Supprimer
-                                        </button>
-                                    </div>
-
+                {selectedSpot && !showForm && (() => {
+                    const materials: string[] = selectedSpot.materials ? (typeof selectedSpot.materials === 'string' ? JSON.parse(selectedSpot.materials) : selectedSpot.materials) : [];
+                    return (
+                        <div className="absolute inset-y-0 right-0 z-20 flex items-start p-6 pt-6 pointer-events-none">
+                            <aside className="w-[360px] max-h-[calc(100vh-120px)] bg-white rounded-[32px] shadow-[0_20px_50px_rgba(0,0,0,0.1)] border border-slate-100 overflow-y-auto flex flex-col pointer-events-auto animate-in fade-in slide-in-from-right-8 duration-500">
+                                <div className="relative h-48 w-full bg-slate-100 flex-shrink-0">
+                                    <img
+                                        src={selectedSpot.image || "https://images.unsplash.com/photo-1532996122724-e3c354a0b15b?q=80&w=400"}
+                                        alt={selectedSpot.title}
+                                        className="w-full h-full object-cover"
+                                    />
                                     <button
-                                        onClick={() => handleCopyAddress(selectedSpot.address)}
-                                        className={`w-full border text-[10px] font-bold py-2 rounded-xl transition-all uppercase tracking-widest ${copied ? 'bg-emerald-50 border-emerald-200 text-emerald-600' : 'bg-white border-slate-200 text-slate-400 hover:bg-slate-50'}`}
+                                        onClick={() => setSelectedSpot(null)}
+                                        className="absolute top-4 right-4 w-10 h-10 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center text-slate-600 hover:text-rose-500 transition-all shadow-md"
                                     >
-                                        {copied ? 'Adresse copiée !' : "Copier l'adresse"}
+                                        <span className="text-2xl font-light">×</span>
+                                    </button>
+                                    {/* Bouton favori */}
+                                    <button
+                                        onClick={handleFavoriteMap}
+                                        className={`absolute top-4 left-4 w-10 h-10 rounded-full flex items-center justify-center transition-all shadow-md ${isFavorited ? 'bg-red-500 text-white' : 'bg-white/20 backdrop-blur-md text-white hover:bg-white hover:text-red-500'
+                                            }`}
+                                    >
+                                        <span className="material-icons-outlined text-xl">{isFavorited ? 'favorite' : 'favorite_border'}</span>
                                     </button>
                                 </div>
-                            </div>
-                        </aside>
-                    </div>
-                )}
+
+                                <div className="p-6 flex flex-col gap-4">
+                                    <div>
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${selectedSpot.color || 'bg-slate-100'} ${selectedSpot.accent || 'text-slate-600'}`}>
+                                                {selectedSpot.type}
+                                            </span>
+                                            <span className="text-[10px] text-slate-400 font-medium truncate italic max-w-[180px]">
+                                                📍 {selectedSpot.address}
+                                            </span>
+                                        </div>
+                                        <h2 className="text-xl font-semibold text-slate-800 leading-tight">{selectedSpot.title}</h2>
+                                        <p className="text-xs text-slate-400 mt-1">
+                                            Posté par <span className="text-slate-600 font-medium">{selectedSpot.author}</span>
+                                            {selectedSpot.date && (
+                                                <> • {new Date(selectedSpot.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}</>
+                                            )}
+                                        </p>
+                                    </div>
+
+                                    {/* Matières */}
+                                    {materials.length > 0 && (
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {materials.map((mat: string) => {
+                                                const vis = MATERIAL_VISUALS[mat] || { icon: 'help', bg: 'bg-gray-50', text: 'text-gray-600' };
+                                                return (
+                                                    <div key={mat} className={`flex items-center gap-1 px-2 py-0.5 ${vis.bg} ${vis.text} rounded-md text-[9px] font-bold uppercase tracking-wider`}>
+                                                        <span className="material-icons-outlined text-[10px]">{vis.icon}</span>
+                                                        {mat}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+
+                                    {/* Section spécifique Event */}
+                                    {selectedSpot.type === 'Event' && selectedSpot.date && (
+                                        <div className="bg-emerald-50/50 border border-emerald-100 rounded-2xl p-3 flex items-center justify-around">
+                                            <div className="text-center">
+                                                <p className="text-[9px] uppercase tracking-widest text-emerald-600 font-bold">Date</p>
+                                                <p className="text-sm font-semibold text-emerald-900">
+                                                    {new Date(selectedSpot.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
+                                                </p>
+                                            </div>
+                                            <div className="w-[1px] h-8 bg-emerald-200/50"></div>
+                                            <div className="text-center">
+                                                <p className="text-[9px] uppercase tracking-widest text-emerald-600 font-bold">Heure</p>
+                                                <p className="text-sm font-semibold text-emerald-900">{selectedSpot.hours || "14:00"}</p>
+                                            </div>
+                                            <div className="w-[1px] h-8 bg-emerald-200/50"></div>
+                                            <div className="text-center">
+                                                <p className="text-[9px] uppercase tracking-widest text-emerald-600 font-bold">Participants</p>
+                                                <p className="text-sm font-semibold text-emerald-900">{participantCount}</p>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Urgence pour Signalement */}
+                                    {selectedSpot.type === 'Signalement' && selectedSpot.urgency && (
+                                        <div className={`rounded-2xl p-3 flex items-center gap-2 ${selectedSpot.urgency === 'Urgent' ? 'bg-rose-50 border border-rose-100' :
+                                            selectedSpot.urgency === 'Moyen' ? 'bg-amber-50 border border-amber-100' :
+                                                'bg-blue-50 border border-blue-100'
+                                            }`}>
+                                            <span className="material-icons-outlined text-sm">warning</span>
+                                            <span className="text-xs font-bold">Urgence : {selectedSpot.urgency}</span>
+                                        </div>
+                                    )}
+
+                                    <p className="text-sm text-slate-500 leading-relaxed italic border-l-2 border-slate-100 pl-4">
+                                        &quot;{selectedSpot.description || selectedSpot.desc || "Aucune description fournie."}&quot;
+                                    </p>
+
+                                    <div className="flex flex-col gap-2 pt-2">
+                                        {/* Boutons Participer + Favori */}
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={handleParticipateMap}
+                                                className={`flex-1 py-3 text-sm font-bold rounded-2xl transition-all flex items-center justify-center gap-1.5 ${isParticipating
+                                                    ? 'bg-[#33a17b] text-white shadow-lg shadow-emerald-200'
+                                                    : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-200'
+                                                    }`}
+                                            >
+                                                <span className="material-icons-outlined text-sm">{isParticipating ? 'check_circle' : 'group_add'}</span>
+                                                {isParticipating ? 'Inscrit !' : 'Participer'}
+                                                {participantCount > 0 && (
+                                                    <span className="ml-1 px-1.5 py-0.5 bg-white/20 rounded-full text-[9px]">{participantCount}</span>
+                                                )}
+                                            </button>
+                                            <button
+                                                onClick={() => setShowComments(!showComments)}
+                                                className={`px-4 py-3 rounded-2xl text-sm font-bold transition-all flex items-center gap-1.5 ${showComments ? 'bg-[#1a2f28] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                                    }`}
+                                            >
+                                                <span className="material-icons-outlined text-sm">chat_bubble_outline</span>
+                                                {spotComments.length > 0 ? spotComments.length : ''}
+                                            </button>
+                                        </div>
+
+                                        {/* Section commentaires */}
+                                        {showComments && (
+                                            <div className="border-t border-slate-100 pt-3 space-y-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                                                {spotComments.length === 0 && (
+                                                    <p className="text-xs text-slate-400 text-center italic py-2">Aucun commentaire</p>
+                                                )}
+                                                {spotComments.map((c: any) => (
+                                                    <div key={c.id} className="flex gap-2">
+                                                        <div className="w-6 h-6 bg-[#1a2f28] rounded-full flex items-center justify-center flex-shrink-0">
+                                                            <span className="text-white text-[9px] font-bold">{c.author?.[0]?.toUpperCase()}</span>
+                                                        </div>
+                                                        <div className="flex-1">
+                                                            <p className="text-[10px] font-bold text-slate-700">
+                                                                {c.author}
+                                                                <span className="font-normal text-slate-400 ml-1">
+                                                                    {c.createdAt ? new Date(c.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : ''}
+                                                                </span>
+                                                            </p>
+                                                            <p className="text-xs text-slate-500">{c.content}</p>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                                <div className="flex gap-1.5 pt-1">
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Nom"
+                                                        value={commentAuthor}
+                                                        onChange={(e) => setCommentAuthor(e.target.value)}
+                                                        className="w-20 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[10px] focus:outline-none focus:ring-1 focus:ring-[#33a17b]/30"
+                                                    />
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Votre commentaire..."
+                                                        value={commentInput}
+                                                        onChange={(e) => setCommentInput(e.target.value)}
+                                                        onKeyDown={(e) => e.key === 'Enter' && handleAddCommentMap()}
+                                                        className="flex-1 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[10px] focus:outline-none focus:ring-1 focus:ring-[#33a17b]/30"
+                                                    />
+                                                    <button
+                                                        onClick={handleAddCommentMap}
+                                                        disabled={!commentInput.trim() || !commentAuthor.trim()}
+                                                        className="px-2.5 py-1.5 bg-[#1a2f28] text-white rounded-lg text-[10px] font-bold hover:bg-[#2a453c] disabled:opacity-40"
+                                                    >
+                                                        <span className="material-icons-outlined text-xs">send</span>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Boutons Modifier / Supprimer */}
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={handleOpenEdit}
+                                                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-[#1a2f28] text-white text-[11px] font-bold rounded-xl hover:bg-[#2a453c] transition-all"
+                                            >
+                                                <span className="material-icons-outlined text-sm">edit</span>
+                                                Modifier
+                                            </button>
+                                            <button
+                                                onClick={() => setShowDeleteConfirm(true)}
+                                                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-rose-50 text-rose-600 text-[11px] font-bold rounded-xl hover:bg-rose-100 transition-all border border-rose-200"
+                                            >
+                                                <span className="material-icons-outlined text-sm">delete</span>
+                                                Supprimer
+                                            </button>
+                                        </div>
+
+                                        <button
+                                            onClick={() => handleCopyAddress(selectedSpot.address)}
+                                            className={`w-full border text-[10px] font-bold py-2 rounded-xl transition-all uppercase tracking-widest ${copied ? 'bg-emerald-50 border-emerald-200 text-emerald-600' : 'bg-white border-slate-200 text-slate-400 hover:bg-slate-50'}`}
+                                        >
+                                            {copied ? 'Adresse copiée !' : "Copier l'adresse"}
+                                        </button>
+                                    </div>
+                                </div>
+                            </aside>
+                        </div>
+                    );
+                })()}
 
                 {/* Modal de confirmation de suppression */}
                 {showDeleteConfirm && (

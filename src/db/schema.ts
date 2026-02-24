@@ -28,5 +28,33 @@ export const spots = mysqlTable("spots", {
     hours: varchar("hours", { length: 100 }),
     urgency: varchar("urgency", { length: 50 }),
 
+    // Types de matières (stocké en JSON : ["Plastique", "Verre", ...])
+    materials: json("materials"),
+
+    createdAt: datetime("created_at").default(sql`CURRENT_TIMESTAMP`),
+});
+
+// ---------- COMMENTAIRES ----------
+export const comments = mysqlTable("comments", {
+    id: int("id").primaryKey().autoincrement(),
+    spotId: int("spot_id").notNull(),
+    author: varchar("author", { length: 100 }).notNull(),
+    content: text("content").notNull(),
+    createdAt: datetime("created_at").default(sql`CURRENT_TIMESTAMP`),
+});
+
+// ---------- PARTICIPATIONS ----------
+export const participations = mysqlTable("participations", {
+    id: int("id").primaryKey().autoincrement(),
+    spotId: int("spot_id").notNull(),
+    userName: varchar("user_name", { length: 100 }).notNull(),
+    createdAt: datetime("created_at").default(sql`CURRENT_TIMESTAMP`),
+});
+
+// ---------- FAVORIS ----------
+export const favorites = mysqlTable("favorites", {
+    id: int("id").primaryKey().autoincrement(),
+    spotId: int("spot_id").notNull(),
+    userName: varchar("user_name", { length: 100 }).notNull(),
     createdAt: datetime("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
