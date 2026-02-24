@@ -31,7 +31,19 @@ function ZoomHandler({ onZoomChange }: { onZoomChange: (zoom: number) => void })
     return null;
 }
 
-const MapContent = memo(({ onSelectSpot, selectedSpot, dbSpots, zoomLevel, setZoomLevel }: any) => {
+/** Gestionnaire de clic pour le mode sélection de position */
+function ClickHandler({ onMapClick, pickingMode }: { onMapClick: (lat: number, lng: number) => void; pickingMode: boolean }) {
+    useMapEvents({
+        click: (e) => {
+            if (pickingMode) {
+                onMapClick(e.latlng.lat, e.latlng.lng);
+            }
+        },
+    });
+    return null;
+}
+
+const MapContent = memo(({ onSelectSpot, selectedSpot, dbSpots, zoomLevel, setZoomLevel, pickingMode, onMapClick, pickedPosition }: any) => {
     const showMarkers = zoomLevel >= 11;
 
     const createCustomIcon = (emoji: string, colorClass: string, isActive: boolean) => {
@@ -52,12 +64,25 @@ const MapContent = memo(({ onSelectSpot, selectedSpot, dbSpots, zoomLevel, setZo
         });
     };
 
+    const pickedIcon = L.divIcon({
+        html: `
+            <div class="flex items-center justify-center">
+                <div class="absolute w-14 h-14 bg-emerald-400 opacity-30 rounded-full animate-ping"></div>
+                <div class="w-10 h-10 bg-emerald-500 text-white rounded-full shadow-xl border-3 border-white flex items-center justify-center">
+                    <span class="text-lg">📍</span>
+                </div>
+            </div>`,
+        className: 'picked-marker',
+        iconSize: [40, 40],
+        iconAnchor: [20, 20],
+    });
+
     return (
         <MapContainer
             center={[48.8566, 2.3522]}
             zoom={13}
             zoomControl={false}
-            style={{ height: "100%", width: "100%" }}
+            style={{ height: "100%", width: "100%", cursor: pickingMode ? 'crosshair' : 'grab' }}
             trackResize={true}
         >
             <TileLayer
@@ -67,6 +92,15 @@ const MapContent = memo(({ onSelectSpot, selectedSpot, dbSpots, zoomLevel, setZo
             <ZoomControl position="bottomleft" />
             <RecenterMap spot={selectedSpot} />
             <ZoomHandler onZoomChange={setZoomLevel} />
+            <ClickHandler onMapClick={onMapClick} pickingMode={pickingMode} />
+
+            {/* Marqueur de position sélectionnée */}
+            {pickedPosition && (
+                <Marker
+                    position={[pickedPosition.lat, pickedPosition.lng]}
+                    icon={pickedIcon}
+                />
+            )}
 
             {showMarkers && dbSpots?.map((spot: any) => {
                 const visuals = getVisualsByType(spot.type);

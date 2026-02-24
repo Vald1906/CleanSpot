@@ -1,0 +1,437 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+
+interface SpotFormData {
+    type: 'Event' | 'Signalement';
+    title: string;
+    description: string;
+    author: string;
+    latitude: number;
+    longitude: number;
+    address: string;
+    image: string;
+    date: string;
+    hours: string;
+    urgency: string;
+}
+
+interface SpotFormModalProps {
+    isOpen: boolean;
+    onClose: () => void;
+    onSubmit: (data: SpotFormData) => Promise<void>;
+    initialData?: Partial<SpotFormData> & { id?: number };
+    mode: 'create' | 'edit';
+    /** Coordonnées sélectionnées via la carte */
+    pickedPosition?: { lat: number; lng: number } | null;
+}
+
+const emptyForm: SpotFormData = {
+    type: 'Event',
+    title: '',
+    description: '',
+    author: '',
+    latitude: 0,
+    longitude: 0,
+    address: '',
+    image: '',
+    date: '',
+    hours: '',
+    urgency: '',
+};
+
+export default function SpotFormModal({
+    isOpen,
+    onClose,
+    onSubmit,
+    initialData,
+    mode,
+    pickedPosition,
+}: SpotFormModalProps) {
+    const [form, setForm] = useState<SpotFormData>(emptyForm);
+    const [loading, setLoading] = useState(false);
+    const [geocoding, setGeocoding] = useState(false);
+    const [addressSuggestions, setAddressSuggestions] = useState<any[]>([]);
+    const [showSuggestions, setShowSuggestions] = useState(false);
+
+    // Pré-remplir le formulaire en mode édition
+    useEffect(() => {
+        if (mode === 'edit' && initialData) {
+            setForm({
+                type: initialData.type || 'Event',
+                title: initialData.title || '',
+                description: initialData.description || '',
+                author: initialData.author || '',
+                latitude: initialData.latitude || 0,
+                longitude: initialData.longitude || 0,
+                address: initialData.address || '',
+                image: initialData.image || '',
+                date: initialData.date || '',
+                hours: initialData.hours || '',
+                urgency: initialData.urgency || '',
+            });
+        } else if (mode === 'create') {
+            setForm(emptyForm);
+        }
+    }, [mode, initialData, isOpen]);
+
+    // Mise à jour quand l'utilisateur clique sur la carte
+    useEffect(() => {
+        if (pickedPosition) {
+            setForm((prev) => ({
+                ...prev,
+                latitude: pickedPosition.lat,
+                longitude: pickedPosition.lng,
+            }));
+            // Reverse geocoding pour obtenir l'adresse
+            reverseGeocode(pickedPosition.lat, pickedPosition.lng);
+        }
+    }, [pickedPosition]);
+
+    const reverseGeocode = async (lat: number, lng: number) => {
+        setGeocoding(true);
+        try {
+            const res = await fetch(
+                `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
+                { headers: { 'Accept-Language': 'fr' } }
+            );
+            const data = await res.json();
+            if (data.display_name) {
+                setForm((prev) => ({ ...prev, address: data.display_name }));
+            }
+        } catch (err) {
+            console.error('Erreur géocodage inverse:', err);
+        }
+        setGeocoding(false);
+    };
+
+    const searchAddress = async (query: string) => {
+        if (query.length < 3) {
+            setAddressSuggestions([]);
+            return;
+        }
+        try {
+            const res = await fetch(
+                `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&countrycodes=fr`,
+                { headers: { 'Accept-Language': 'fr' } }
+            );
+            const data = await res.json();
+            setAddressSuggestions(data);
+            setShowSuggestions(true);
+        } catch (err) {
+            console.error('Erreur recherche adresse:', err);
+        }
+    };
+
+    const selectSuggestion = (suggestion: any) => {
+        setForm((prev) => ({
+            ...prev,
+            address: suggestion.display_name,
+            latitude: parseFloat(suggestion.lat),
+            longitude: parseFloat(suggestion.lon),
+        }));
+        setShowSuggestions(false);
+        setAddressSuggestions([]);
+    };
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+        const { name, value } = e.target;
+        setForm((prev) => ({ ...prev, [name]: value }));
+
+        if (name === 'address') {
+            searchAddress(value);
+        }
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setLoading(true);
+        try {
+            await onSubmit(form);
+            onClose();
+        } catch (err) {
+            console.error('Erreur soumission:', err);
+        }
+        setLoading(false);
+    };
+
+    if (!isOpen) return null;
+
+    const typeConfig = {
+        'Event': { icon: 'event', color: 'bg-emerald-500', label: 'Événement' },
+        'Signalement': { icon: 'report_problem', color: 'bg-rose-500', label: 'Signalement' },
+    };
+
+    return (
+        <>
+            {/* Backdrop */}
+            <div
+                className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[70] transition-opacity"
+                onClick={onClose}
+            />
+
+            {/* Modal Panel */}
+            <div className="fixed inset-y-0 right-0 z-[80] w-full max-w-lg flex">
+                <div className="w-full bg-white shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
+                    {/* Header */}
+                    <div className="flex items-center justify-between px-6 py-4 border-b border-muted">
+                        <div className="flex items-center gap-3">
+                            <div className={`w-10 h-10 ${typeConfig[form.type]?.color || 'bg-[#1a2f28]'} rounded-xl flex items-center justify-center text-white transition-all`}>
+                                <span className="material-icons-outlined text-lg">{typeConfig[form.type]?.icon || 'add_location'}</span>
+                            </div>
+                            <div>
+                                <h2 className="text-lg font-bold text-[#1a2f28]">
+                                    {mode === 'create' ? 'Nouveau Spot' : 'Modifier le Spot'}
+                                </h2>
+                                <p className="text-xs text-muted-foreground">
+                                    {mode === 'create'
+                                        ? 'Créer un événement ou un signalement'
+                                        : 'Modifier les informations du spot'}
+                                </p>
+                            </div>
+                        </div>
+                        <button
+                            onClick={onClose}
+                            className="w-9 h-9 rounded-full bg-muted hover:bg-muted/80 flex items-center justify-center text-muted-foreground hover:text-[#1a2f28] transition-all"
+                        >
+                            <span className="material-icons-outlined text-lg">close</span>
+                        </button>
+                    </div>
+
+                    {/* Form */}
+                    <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+                        {/* Type */}
+                        <div>
+                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2 block">
+                                Type de spot
+                            </label>
+                            <div className="grid grid-cols-2 gap-2">
+                                {(['Event', 'Signalement'] as const).map((t) => (
+                                    <button
+                                        key={t}
+                                        type="button"
+                                        onClick={() => setForm((prev) => ({ ...prev, type: t }))}
+                                        className={`flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border-2 text-xs font-bold transition-all ${form.type === t
+                                            ? 'border-[#1a2f28] bg-[#1a2f28] text-white shadow-lg'
+                                            : 'border-muted bg-white text-muted-foreground hover:border-[#33a17b]'
+                                            }`}
+                                    >
+                                        <span className="material-icons-outlined text-lg">{typeConfig[t].icon}</span>
+                                        {typeConfig[t].label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Titre */}
+                        <div>
+                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2 block">
+                                Titre *
+                            </label>
+                            <input
+                                type="text"
+                                name="title"
+                                value={form.title}
+                                onChange={handleChange}
+                                placeholder="Ex: Grande collecte au Parc des Buttes-Chaumont"
+                                required
+                                className="w-full px-4 py-3 bg-muted/30 border border-muted rounded-xl text-sm text-[#1a2f28] placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-[#33a17b]/30 focus:border-[#33a17b] transition-all"
+                            />
+                        </div>
+
+                        {/* Description */}
+                        <div>
+                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2 block">
+                                Description
+                            </label>
+                            <textarea
+                                name="description"
+                                value={form.description}
+                                onChange={handleChange}
+                                rows={3}
+                                placeholder="Décrivez le spot en quelques mots..."
+                                className="w-full px-4 py-3 bg-muted/30 border border-muted rounded-xl text-sm text-[#1a2f28] placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-[#33a17b]/30 focus:border-[#33a17b] transition-all resize-none"
+                            />
+                        </div>
+
+                        {/* Auteur */}
+                        <div>
+                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2 block">
+                                Auteur *
+                            </label>
+                            <input
+                                type="text"
+                                name="author"
+                                value={form.author}
+                                onChange={handleChange}
+                                placeholder="Votre nom ou pseudo"
+                                required
+                                className="w-full px-4 py-3 bg-muted/30 border border-muted rounded-xl text-sm text-[#1a2f28] placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-[#33a17b]/30 focus:border-[#33a17b] transition-all"
+                            />
+                        </div>
+
+                        {/* Adresse avec autocomplete */}
+                        <div className="relative">
+                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2 block">
+                                Adresse * <span className="normal-case font-normal">(ou cliquez sur la carte)</span>
+                            </label>
+                            <div className="relative">
+                                <span className="material-icons-outlined absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-lg">location_on</span>
+                                <input
+                                    type="text"
+                                    name="address"
+                                    value={form.address}
+                                    onChange={handleChange}
+                                    onFocus={() => addressSuggestions.length > 0 && setShowSuggestions(true)}
+                                    onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                                    placeholder="Tapez une adresse..."
+                                    required
+                                    className="w-full pl-10 pr-4 py-3 bg-muted/30 border border-muted rounded-xl text-sm text-[#1a2f28] placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-[#33a17b]/30 focus:border-[#33a17b] transition-all"
+                                />
+                                {geocoding && (
+                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[#33a17b] text-xs animate-pulse">
+                                        Géocodage...
+                                    </span>
+                                )}
+                            </div>
+
+                            {/* Suggestions dropdown */}
+                            {showSuggestions && addressSuggestions.length > 0 && (
+                                <div className="absolute z-50 mt-1 w-full bg-white border border-muted rounded-xl shadow-lg overflow-hidden">
+                                    {addressSuggestions.map((s, i) => (
+                                        <button
+                                            key={i}
+                                            type="button"
+                                            onClick={() => selectSuggestion(s)}
+                                            className="w-full text-left px-4 py-3 text-sm text-[#1a2f28] hover:bg-muted/50 transition-colors border-b border-muted/30 last:border-none flex items-start gap-2"
+                                        >
+                                            <span className="material-icons-outlined text-[#33a17b] text-sm mt-0.5 flex-shrink-0">place</span>
+                                            <span className="line-clamp-2">{s.display_name}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* Coordonnées affichées */}
+                            {form.latitude !== 0 && form.longitude !== 0 && (
+                                <p className="text-[10px] text-[#33a17b] font-medium mt-1.5 flex items-center gap-1">
+                                    <span className="material-icons-outlined text-xs">check_circle</span>
+                                    Position : {form.latitude.toFixed(5)}, {form.longitude.toFixed(5)}
+                                </p>
+                            )}
+                        </div>
+
+                        {/* Date + Heure (pour Event) */}
+                        {form.type === 'Event' && (
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2 block">
+                                        Date
+                                    </label>
+                                    <input
+                                        type="date"
+                                        name="date"
+                                        value={form.date}
+                                        onChange={handleChange}
+                                        className="w-full px-4 py-3 bg-muted/30 border border-muted rounded-xl text-sm text-[#1a2f28] focus:outline-none focus:ring-2 focus:ring-[#33a17b]/30 focus:border-[#33a17b] transition-all"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2 block">
+                                        Heure
+                                    </label>
+                                    <input
+                                        type="time"
+                                        name="hours"
+                                        value={form.hours}
+                                        onChange={handleChange}
+                                        className="w-full px-4 py-3 bg-muted/30 border border-muted rounded-xl text-sm text-[#1a2f28] focus:outline-none focus:ring-2 focus:ring-[#33a17b]/30 focus:border-[#33a17b] transition-all"
+                                    />
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Urgence (pour Signalement) */}
+                        {form.type === 'Signalement' && (
+                            <div>
+                                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2 block">
+                                    Niveau d'urgence
+                                </label>
+                                <div className="grid grid-cols-3 gap-2">
+                                    {['Faible', 'Moyen', 'Urgent'].map((u) => (
+                                        <button
+                                            key={u}
+                                            type="button"
+                                            onClick={() => setForm((prev) => ({ ...prev, urgency: u }))}
+                                            className={`py-2.5 px-3 rounded-xl text-xs font-bold transition-all border-2 ${form.urgency === u
+                                                ? u === 'Urgent'
+                                                    ? 'border-rose-500 bg-rose-500 text-white'
+                                                    : u === 'Moyen'
+                                                        ? 'border-amber-500 bg-amber-500 text-white'
+                                                        : 'border-blue-500 bg-blue-500 text-white'
+                                                : 'border-muted bg-white text-muted-foreground hover:border-[#33a17b]'
+                                                }`}
+                                        >
+                                            {u}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Image URL */}
+                        <div>
+                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2 block">
+                                Image (URL)
+                            </label>
+                            <input
+                                type="url"
+                                name="image"
+                                value={form.image}
+                                onChange={handleChange}
+                                placeholder="https://exemple.com/photo.jpg"
+                                className="w-full px-4 py-3 bg-muted/30 border border-muted rounded-xl text-sm text-[#1a2f28] placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-[#33a17b]/30 focus:border-[#33a17b] transition-all"
+                            />
+                            {form.image && (
+                                <div className="mt-2 rounded-xl overflow-hidden border border-muted h-32">
+                                    <img src={form.image} alt="Aperçu" className="w-full h-full object-cover" onError={(e) => (e.currentTarget.style.display = 'none')} />
+                                </div>
+                            )}
+                        </div>
+                    </form>
+
+                    {/* Footer */}
+                    <div className="px-6 py-4 border-t border-muted flex items-center gap-3">
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="flex-1 py-3 bg-muted/50 text-[#1a2f28] text-sm font-bold rounded-xl hover:bg-muted transition-all"
+                        >
+                            Annuler
+                        </button>
+                        <button
+                            type="submit"
+                            onClick={handleSubmit}
+                            disabled={loading || !form.title || !form.author || !form.address}
+                            className="flex-1 py-3 bg-[#1a2f28] text-white text-sm font-bold rounded-xl hover:bg-[#2a453c] transition-all shadow-lg disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        >
+                            {loading ? (
+                                <>
+                                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                                    Enregistrement...
+                                </>
+                            ) : (
+                                <>
+                                    <span className="material-icons-outlined text-sm">
+                                        {mode === 'create' ? 'add_location' : 'save'}
+                                    </span>
+                                    {mode === 'create' ? 'Créer le spot' : 'Enregistrer'}
+                                </>
+                            )}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </>
+    );
+}
