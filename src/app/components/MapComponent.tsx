@@ -17,73 +17,54 @@ const getVisualsByType = (type: string) => {
 function RecenterMap({ spot }: { spot: any }) {
     const map = useMap();
     useEffect(() => {
-        if (spot?.latitude && spot?.longitude) {
-            map.flyTo([spot.latitude, spot.longitude], 16, { animate: true, duration: 1.5 });
-        }
+        if (!map || !spot?.latitude) return;
+        const timer = setTimeout(() => {
+            try {
+                if (map.getPane('markerPane')) {
+                    map.flyTo([spot.latitude, spot.longitude], 16, { animate: true, duration: 1.5 });
+                }
+            } catch (e) { /* Instance détruite */ }
+        }, 100);
+        return () => clearTimeout(timer);
     }, [spot?.id, spot?._clickTimestamp, map]);
     return null;
 }
 
 function ZoomHandler({ onZoomChange }: { onZoomChange: (zoom: number) => void }) {
-    useMapEvents({
-        zoomend: (e) => onZoomChange(e.target.getZoom()),
-    });
-    return null;
-}
-
-/** Gestionnaire de clic pour le mode sélection de position */
-function ClickHandler({ onMapClick, pickingMode }: { onMapClick: (lat: number, lng: number) => void; pickingMode: boolean }) {
-    useMapEvents({
-        click: (e) => {
-            if (pickingMode) {
-                onMapClick(e.latlng.lat, e.latlng.lng);
-            }
+    const map = useMapEvents({
+        zoomend: () => {
+            if (map) onZoomChange(map.getZoom());
         },
     });
     return null;
 }
 
-const MapContent = memo(({ onSelectSpot, selectedSpot, dbSpots, zoomLevel, setZoomLevel, pickingMode, onMapClick, pickedPosition }: any) => {
-    const showMarkers = zoomLevel >= 11;
+const MapContent = memo(({ onSelectSpot, selectedSpot, dbSpots, zoomLevel, setZoomLevel }: any) => {
+    const showMarkers = zoomLevel >= 8;
 
     const createCustomIcon = (emoji: string, colorClass: string, isActive: boolean) => {
         return L.divIcon({
             html: `
                 <div class="group relative flex items-center justify-center">
-                    <div class="absolute w-12 h-12 ${colorClass} opacity-20 rounded-full 
-                                ${isActive ? 'animate-pulse' : 'animate-ping'}"></div>
-                    <div class="flex items-center justify-center w-11 h-11 ${colorClass} text-white 
-                                rounded-2xl shadow-lg border-2 border-white transform transition-all duration-300
-                                ${isActive ? 'scale-125 rotate-12 ring-4 ring-white/50 shadow-2xl' : 'scale-100'}">
+                    <div class="absolute w-12 h-12 ${colorClass} opacity-20 rounded-full ${isActive ? 'animate-pulse' : ''}"></div>
+                    <div class="flex items-center justify-center w-11 h-11 ${colorClass} text-white rounded-2xl shadow-lg border-2 border-white transform transition-all ${isActive ? 'scale-125 rotate-12' : 'scale-100'}">
                         <span class="text-xl">${emoji}</span>
                     </div>
                 </div>`,
-            className: 'custom-marker',
+            className: 'custom-div-icon',
             iconSize: [44, 44],
             iconAnchor: [22, 22],
         });
     };
 
-    const pickedIcon = L.divIcon({
-        html: `
-            <div class="flex items-center justify-center">
-                <div class="absolute w-14 h-14 bg-emerald-400 opacity-30 rounded-full animate-ping"></div>
-                <div class="w-10 h-10 bg-emerald-500 text-white rounded-full shadow-xl border-3 border-white flex items-center justify-center">
-                    <span class="text-lg">📍</span>
-                </div>
-            </div>`,
-        className: 'picked-marker',
-        iconSize: [40, 40],
-        iconAnchor: [20, 20],
-    });
-
     return (
         <MapContainer
+            key="static-map-instance"
             center={[48.8566, 2.3522]}
             zoom={13}
             zoomControl={false}
-            style={{ height: "100%", width: "100%", cursor: pickingMode ? 'crosshair' : 'grab' }}
-            trackResize={true}
+            style={{ height: "100%", width: "100%" }}
+            trackResize={false}
         >
             <TileLayer
                 url="https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png"
@@ -92,25 +73,26 @@ const MapContent = memo(({ onSelectSpot, selectedSpot, dbSpots, zoomLevel, setZo
             <ZoomControl position="bottomleft" />
             <RecenterMap spot={selectedSpot} />
             <ZoomHandler onZoomChange={setZoomLevel} />
-            <ClickHandler onMapClick={onMapClick} pickingMode={pickingMode} />
-
-            {/* Marqueur de position sélectionnée */}
-            {pickedPosition && (
-                <Marker
-                    position={[pickedPosition.lat, pickedPosition.lng]}
-                    icon={pickedIcon}
-                />
-            )}
 
             {showMarkers && dbSpots?.map((spot: any) => {
+                if (!spot.latitude || !spot.longitude) return null;
                 const visuals = getVisualsByType(spot.type);
+                const isActive = selectedSpot?.id === spot.id;
+
                 return (
                     <Marker
-                        key={spot.id}
+                        key={`marker-${spot.id}-${isActive}`}
                         position={[spot.latitude, spot.longitude]}
-                        icon={createCustomIcon(visuals.icon, visuals.color, selectedSpot?.id === spot.id)}
+                        icon={createCustomIcon(visuals.icon, visuals.color, isActive)}
                         eventHandlers={{
-                            click: () => onSelectSpot({ ...spot, ...visuals, _clickTimestamp: Date.now() })
+                            click: (e) => {
+                                L.DomEvent.stopPropagation(e);
+                                onSelectSpot({
+                                    ...spot,
+                                    ...visuals,
+                                    _clickTimestamp: Date.now()
+                                });
+                            }
                         }}
                     />
                 );
@@ -123,5 +105,38 @@ MapContent.displayName = "MapContent";
 
 export default function MapComponent(props: any) {
     const [zoomLevel, setZoomLevel] = useState(13);
-    return <MapContent {...props} zoomLevel={zoomLevel} setZoomLevel={setZoomLevel} />;
+    const [mapVisible, setMapVisible] = useState(false);
+
+    // Montage initial
+    useEffect(() => {
+        setMapVisible(true);
+    }, []);
+
+    // SURVEILLANCE DU RÔLE : Si le rôle change, on recharge la page entière
+    useEffect(() => {
+        // mapVisible sert ici à vérifier que ce n'est pas le tout premier chargement
+        if (mapVisible) {
+            window.location.reload();
+        }
+    }, [props.userRole]);
+
+    if (!mapVisible) {
+        return (
+            <div className="h-full w-full bg-slate-50 flex items-center justify-center">
+                <div className="text-slate-300 text-sm font-medium animate-pulse">
+                    Initialisation de la carte...
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="h-full w-full relative">
+            <MapContent
+                {...props}
+                zoomLevel={zoomLevel}
+                setZoomLevel={setZoomLevel}
+            />
+        </div>
+    );
 }
