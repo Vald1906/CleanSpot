@@ -12,6 +12,7 @@ interface SpotFormData {
     address: string;
     image: string;
     date: string;
+    dateFin: string;
     hours: string;
     urgency: string;
     materials: string[];
@@ -47,6 +48,7 @@ const emptyForm: SpotFormData = {
     address: '',
     image: '',
     date: '',
+    dateFin: '',
     hours: '',
     urgency: '',
     materials: [],
@@ -79,6 +81,7 @@ export default function SpotFormModal({
                 address: initialData.address || '',
                 image: initialData.image || '',
                 date: initialData.date || '',
+                dateFin: (initialData as any).dateFin || '',
                 hours: initialData.hours || '',
                 urgency: initialData.urgency || '',
                 materials: (initialData as any).materials || [],
@@ -257,8 +260,8 @@ export default function SpotFormModal({
                                                 }));
                                             }}
                                             className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all border-2 ${isSelected
-                                                    ? `${mat.activeBg} text-white border-transparent shadow-md`
-                                                    : `${mat.bg} ${mat.text} border-transparent hover:border-current`
+                                                ? `${mat.activeBg} text-white border-transparent shadow-md`
+                                                : `${mat.bg} ${mat.text} border-transparent hover:border-current`
                                                 }`}
                                         >
                                             <span className="material-icons-outlined text-sm">{mat.icon}</span>
@@ -377,7 +380,7 @@ export default function SpotFormModal({
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
                                     <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2 block">
-                                        Date
+                                        Date de début
                                     </label>
                                     <input
                                         type="date"
@@ -388,6 +391,18 @@ export default function SpotFormModal({
                                     />
                                 </div>
                                 <div>
+                                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2 block">
+                                        Date de fin
+                                    </label>
+                                    <input
+                                        type="date"
+                                        name="dateFin"
+                                        value={form.dateFin}
+                                        onChange={handleChange}
+                                        className="w-full px-4 py-3 bg-muted/30 border border-muted rounded-xl text-sm text-[#1a2f28] focus:outline-none focus:ring-2 focus:ring-[#33a17b]/30 focus:border-[#33a17b] transition-all"
+                                    />
+                                </div>
+                                <div className="col-span-2">
                                     <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2 block">
                                         Heure
                                     </label>

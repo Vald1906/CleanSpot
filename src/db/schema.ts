@@ -25,6 +25,7 @@ export const spots = mysqlTable("spots", {
 
     image: longtext("image"),
     date: date("date"),
+    dateFin: date("date_fin"),
     hours: varchar("hours", { length: 100 }),
     urgency: varchar("urgency", { length: 50 }),
 

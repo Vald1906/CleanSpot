@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import NavBar from "@/app/components/navbar";
 import { getSpotsFromDb, createSpot, toggleParticipation, toggleFavorite, getParticipations, getComments, addComment } from "@/app/actions/spotActions";
 import SpotFormModal from "@/app/components/SpotFormModal";
+import { useSearchParams } from "next/navigation";
 
 // Config des matières pour l'affichage
 const MATERIAL_OPTIONS = [
@@ -74,6 +75,12 @@ export default function EventPage() {
     const [commentAuthor, setCommentAuthor] = useState('');
 
     const [userName] = useState('Utilisateur');
+
+    const searchParams = useSearchParams();
+    const initialMode = searchParams.get("mode");
+    const initialSpotId = searchParams.get("spotId");
+    const eventRefs = useRef<Record<number, HTMLDivElement | null>>({});
+    const hasHandledInitialParams = useRef(false);
 
     useEffect(() => {
         loadEvents();
@@ -253,6 +260,29 @@ export default function EventPage() {
             }
         }
     };
+
+    // Ouvre automatiquement la section commentaires quand on arrive avec ?mode=comment&spotId=...
+    useEffect(() => {
+        if (hasHandledInitialParams.current) return;
+        if (!initialSpotId || loading) return;
+
+        const spotIdNum = Number(initialSpotId);
+        if (!Number.isFinite(spotIdNum)) return;
+
+        const exists = allEvents.some(ev => ev.id === spotIdNum);
+        if (!exists) return;
+
+        hasHandledInitialParams.current = true;
+
+        if (initialMode === "comment") {
+            handleToggleComments(spotIdNum);
+        }
+
+        const el = eventRefs.current[spotIdNum];
+        if (el) {
+            el.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+    }, [initialMode, initialSpotId, loading, allEvents]);
 
     const toggleMaterialFilter = (label: string) => {
         setSelectedMaterials(prev =>
@@ -636,7 +666,11 @@ export default function EventPage() {
                                 const dist = getEventDistance(event);
 
                                 return (
-                                    <div key={event.id} className="bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-200/60 hover:shadow-lg transition-all group flex flex-col">
+                                    <div
+                                        key={event.id}
+                                        ref={(el) => { eventRefs.current[event.id] = el; }}
+                                        className="bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-200/60 hover:shadow-lg transition-all group flex flex-col"
+                                    >
                                         <div className="relative h-52">
                                             <img
                                                 src={event.image || `https://images.unsplash.com/photo-1595273670150-db0a3bf4424e?q=80&w=600&auto=format&fit=crop`}
@@ -645,9 +679,18 @@ export default function EventPage() {
                                             />
                                             <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent"></div>
                                             {month && (
-                                                <div className="absolute top-4 left-4 bg-white rounded-xl px-3 py-2 text-center shadow-lg min-w-[56px]">
+                                                <div className="absolute top-4 left-4 bg-white rounded-xl px-3 py-2 text-center shadow-lg min-w-[56px] flex flex-col items-center">
                                                     <span className="block text-[11px] font-bold text-slate-500 uppercase leading-none">{month}</span>
                                                     <span className="block text-2xl font-bold text-[#1a2f28] leading-tight">{day}</span>
+                                                    {event.dateFin && (
+                                                        <>
+                                                            <div className="w-full border-t border-slate-100 my-1"></div>
+                                                            <span className="block text-[9px] font-bold text-slate-400 uppercase leading-none">Jusqu'au</span>
+                                                            <span className="block text-sm font-bold text-[#33a17b]">
+                                                                {new Date(event.dateFin).getDate()} {new Date(event.dateFin).toLocaleDateString('fr-FR', { month: 'short' }).toUpperCase()}
+                                                            </span>
+                                                        </>
+                                                    )}
                                                 </div>
                                             )}
                                             {dist !== null && (

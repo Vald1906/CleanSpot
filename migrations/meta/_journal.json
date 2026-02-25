@@ -8,6 +8,20 @@
       "when": 1771966643189,
       "tag": "0000_cheerful_ghost_rider",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1772024266269,
+      "tag": "0001_equal_the_stranger",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1772030075362,
+      "tag": "0002_careless_stardust",
+      "breakpoints": true
     }
   ]
 }

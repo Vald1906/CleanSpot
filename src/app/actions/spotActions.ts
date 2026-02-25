@@ -26,6 +26,7 @@ export async function createSpot(spotData: {
     address: string;
     image?: string;
     date?: string;
+    dateFin?: string;
     hours?: string;
     urgency?: string;
     materials?: string[];
@@ -41,6 +42,7 @@ export async function createSpot(spotData: {
             address: spotData.address,
             image: spotData.image || null,
             date: spotData.date ? new Date(spotData.date) : null,
+            dateFin: spotData.dateFin ? new Date(spotData.dateFin) : null,
             hours: spotData.hours || null,
             urgency: spotData.urgency || null,
             materials: spotData.materials || null,
@@ -49,6 +51,8 @@ export async function createSpot(spotData: {
 
         revalidatePath("/event");
         revalidatePath("/map");
+        revalidatePath("/dashboard");
+        revalidatePath("/");
 
         return { success: true, id: insertId };
     } catch (error) {
@@ -70,6 +74,7 @@ export async function updateSpot(
         address?: string;
         image?: string;
         date?: string;
+        dateFin?: string;
         hours?: string;
         urgency?: string;
         materials?: string[];
@@ -85,7 +90,8 @@ export async function updateSpot(
         if (spotData.longitude !== undefined) updateData.longitude = spotData.longitude;
         if (spotData.address !== undefined) updateData.address = spotData.address;
         if (spotData.image !== undefined) updateData.image = spotData.image;
-        if (spotData.date !== undefined) updateData.date = spotData.date;
+        if (spotData.date !== undefined) updateData.date = spotData.date ? new Date(spotData.date) : null;
+        if (spotData.dateFin !== undefined) updateData.dateFin = spotData.dateFin ? new Date(spotData.dateFin) : null;
         if (spotData.hours !== undefined) updateData.hours = spotData.hours;
         if (spotData.urgency !== undefined) updateData.urgency = spotData.urgency;
         if (spotData.materials !== undefined) updateData.materials = spotData.materials;
@@ -94,6 +100,8 @@ export async function updateSpot(
 
         revalidatePath("/event");
         revalidatePath("/map");
+        revalidatePath("/dashboard");
+        revalidatePath("/");
 
         return { success: true };
     } catch (error) {
@@ -113,6 +121,8 @@ export async function deleteSpot(id: number) {
 
         revalidatePath("/event");
         revalidatePath("/map");
+        revalidatePath("/dashboard");
+        revalidatePath("/");
 
         return { success: true };
     } catch (error) {

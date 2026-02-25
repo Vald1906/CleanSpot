@@ -1,0 +1,1 @@
+ALTER TABLE `spots` ADD `date_fin` date;
