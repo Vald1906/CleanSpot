@@ -107,6 +107,16 @@ export default function SpotFormModal({
         }
     }, [mode, initialData, isOpen]);
 
+    // Charger l'auteur mémorisé si on crée un nouveau spot
+    useEffect(() => {
+        if (mode === 'create' && isOpen) {
+            const saved = typeof window !== 'undefined' ? localStorage.getItem('cleanspot_username') : null;
+            if (saved) {
+                setForm(prev => ({ ...prev, author: saved }));
+            }
+        }
+    }, [mode, isOpen]);
+
     // Mise à jour quand l'utilisateur clique sur la carte
     useEffect(() => {
         if (pickedPosition) {
@@ -189,6 +199,9 @@ export default function SpotFormModal({
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         setForm((prev) => ({ ...prev, [name]: value }));
+        if (name === 'author') {
+            localStorage.setItem('cleanspot_username', value);
+        }
     };
 
     const handleSubmit = async (e: React.FormEvent) => {

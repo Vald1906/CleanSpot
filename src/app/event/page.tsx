@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import NavBar from "@/app/components/navbar";
 import { getSpotsFromDb, createSpot, toggleParticipation, toggleFavorite, getParticipations, getComments, addComment } from "@/app/actions/spotActions";
 import SpotFormModal from "@/app/components/SpotFormModal";
@@ -39,6 +39,33 @@ function getFirstDayOfMonth(year: number, month: number) {
 }
 const MONTH_NAMES = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
 
+// --- COMPOSANTS AUXILIAIRES ---
+
+function EventSkeleton() {
+    return (
+        <div className="bg-white rounded-3xl border border-slate-200/60 overflow-hidden shadow-sm animate-pulse">
+            <div className="h-52 bg-slate-200"></div>
+            <div className="p-6 space-y-4">
+                <div className="flex justify-between items-start">
+                    <div className="space-y-2 flex-1">
+                        <div className="h-6 bg-slate-200 rounded-lg w-3/4"></div>
+                        <div className="h-4 bg-slate-200 rounded-lg w-1/2"></div>
+                    </div>
+                    <div className="w-12 h-14 bg-slate-200 rounded-2xl"></div>
+                </div>
+                <div className="flex gap-2">
+                    <div className="h-6 bg-slate-200 rounded-full w-20"></div>
+                    <div className="h-6 bg-slate-200 rounded-full w-20"></div>
+                </div>
+                <div className="pt-4 border-t border-slate-100 flex justify-between">
+                    <div className="h-10 bg-slate-200 rounded-xl w-32"></div>
+                    <div className="h-10 bg-slate-200 rounded-xl w-32"></div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 export default function EventPage() {
     const [allEvents, setAllEvents] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -72,8 +99,19 @@ export default function EventPage() {
     const [commentsMap, setCommentsMap] = useState<Record<number, any[]>>({});
     const [commentInput, setCommentInput] = useState('');
     const [commentAuthor, setCommentAuthor] = useState('');
+    const [userName, setUserName] = useState('Utilisateur');
 
-    const [userName] = useState('Utilisateur');
+    // Verrou pour éviter les erreurs "InvalidStateError" sur navigator.share (un seul partage à la fois)
+    const isSharingRef = useRef(false);
+
+    // Charger l'auteur mémorisé au montage
+    useEffect(() => {
+        const saved = localStorage.getItem('cleanspot_username');
+        if (saved) {
+            setUserName(saved);
+            setCommentAuthor(saved);
+        }
+    }, []);
 
     useEffect(() => {
         loadEvents();
@@ -258,6 +296,33 @@ export default function EventPage() {
         setSelectedMaterials(prev =>
             prev.includes(label) ? prev.filter(m => m !== label) : [...prev, label]
         );
+    };
+
+    const handleShare = async (event: any) => {
+        if (isSharingRef.current) return;
+
+        const shareData = {
+            title: event.title,
+            text: `Rejoignez-moi pour cet événement : ${event.title} le ${new Date(event.date).toLocaleDateString('fr-FR')}`,
+            url: window.location.href
+        };
+
+        try {
+            if (navigator.share) {
+                isSharingRef.current = true;
+                await navigator.share(shareData);
+            } else {
+                await navigator.clipboard.writeText(window.location.href);
+                alert('Lien copié dans le presse-papier !');
+            }
+        } catch (err: any) {
+            // "AbortError" est levé si l'utilisateur annule le partage, on l'ignore silencieusement
+            if (err.name !== 'AbortError') {
+                console.error('Erreur partage:', err);
+            }
+        } finally {
+            isSharingRef.current = false;
+        }
     };
 
     const handleDateClick = (day: number) => {
@@ -465,8 +530,8 @@ export default function EventPage() {
                                                 }`}
                                         >
                                             {day}
-                                            {hasEvent && !isSelected && (
-                                                <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 bg-[#33a17b] rounded-full"></span>
+                                            {hasEvent && (
+                                                <span className={`absolute bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full transition-all ${isSelected ? 'bg-emerald-400' : 'bg-[#33a17b] shadow-[0_0_5px_rgba(51,161,123,0.5)] animate-bounce-short'}`} />
                                             )}
                                         </button>
                                     );
@@ -612,13 +677,10 @@ export default function EventPage() {
                         </div>
                     )}
 
-                    {/* Loading */}
+                    {/* Loading Skeletons */}
                     {loading && (
-                        <div className="flex items-center justify-center py-24">
-                            <div className="flex flex-col items-center gap-4">
-                                <div className="w-12 h-12 border-3 border-slate-200 border-t-[#1a2f28] rounded-full animate-spin"></div>
-                                <p className="text-sm text-slate-500 font-medium">Chargement des événements...</p>
-                            </div>
+                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                            {[1, 2, 3, 4].map(i => <EventSkeleton key={i} />)}
                         </div>
                     )}
 
@@ -658,13 +720,21 @@ export default function EventPage() {
                                                     </span>
                                                 </div>
                                             )}
-                                            <button
-                                                onClick={() => handleFavorite(event.id)}
-                                                className={`absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center transition-all shadow-lg ${isFav ? 'bg-red-500 text-white' : 'bg-white/90 backdrop-blur-sm text-slate-600 hover:text-red-500'
-                                                    }`}
-                                            >
-                                                <span className="material-icons-outlined text-xl">{isFav ? 'favorite' : 'favorite_border'}</span>
-                                            </button>
+                                            <div className="absolute top-4 right-4 flex gap-2">
+                                                <button
+                                                    onClick={() => handleShare(event)}
+                                                    className="w-10 h-10 bg-white/90 backdrop-blur-md rounded-xl flex items-center justify-center text-[#1a2f28] shadow-lg hover:scale-110 transition-all"
+                                                    title="Partager"
+                                                >
+                                                    <span className="material-icons-outlined text-xl">share</span>
+                                                </button>
+                                                <button
+                                                    onClick={() => handleFavorite(event.id)}
+                                                    className={`w-10 h-10 ${isFav ? 'bg-rose-500 text-white' : 'bg-white/90 backdrop-blur-md text-rose-500'} rounded-xl flex items-center justify-center shadow-lg hover:scale-110 transition-all`}
+                                                >
+                                                    <span className="material-icons-outlined text-xl">{isFav ? 'favorite' : 'favorite_border'}</span>
+                                                </button>
+                                            </div>
                                         </div>
                                         <div className="p-5 flex-1 flex flex-col">
                                             <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 mb-2">
@@ -749,7 +819,12 @@ export default function EventPage() {
                                                             type="text"
                                                             placeholder="Votre nom"
                                                             value={commentAuthor}
-                                                            onChange={(e) => setCommentAuthor(e.target.value)}
+                                                            onChange={(e) => {
+                                                                const val = e.target.value;
+                                                                setCommentAuthor(val);
+                                                                setUserName(val || 'Utilisateur');
+                                                                localStorage.setItem('cleanspot_username', val);
+                                                            }}
                                                             className="w-28 px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-[#33a17b]/30"
                                                         />
                                                         <input
@@ -779,29 +854,41 @@ export default function EventPage() {
 
                     {/* État vide avec filtre */}
                     {!loading && filteredEvents.length === 0 && hasActiveFilters && (
-                        <div className="flex flex-col items-center justify-center py-20 text-center">
-                            <div className="w-20 h-20 bg-muted rounded-2xl flex items-center justify-center mb-4">
-                                <span className="material-icons-outlined text-4xl text-muted-foreground">filter_list_off</span>
+                        <div className="flex flex-col items-center justify-center py-32 text-center bg-white rounded-3xl border border-dashed border-slate-300">
+                            <div className="w-24 h-24 bg-slate-50 rounded-full flex items-center justify-center mb-6">
+                                <span className="material-icons-outlined text-5xl text-slate-300">search_off</span>
                             </div>
-                            <h3 className="text-lg font-bold text-[#1a2f28] mb-2">Aucun résultat trouvé</h3>
-                            <p className="text-sm text-muted-foreground mb-4">Essayez de modifier vos filtres ou votre recherche.</p>
+                            <h3 className="text-xl font-black text-[#1a2f28] mb-2">Aucun événement trouvé</h3>
+                            <p className="text-slate-500 max-w-xs mx-auto mb-8">
+                                Nous n'avons rien trouvé correspondant à vos critères. Essayez d'élargir votre recherche.
+                            </p>
                             <button
                                 onClick={resetFilters}
-                                className="px-6 py-2.5 bg-[#1a2f28] text-white text-xs font-bold rounded-xl hover:bg-[#2a453c] transition-all"
+                                className="flex items-center gap-2 px-8 py-3.5 bg-[#1a2f28] text-white text-sm font-bold rounded-2xl hover:bg-[#2a453c] shadow-xl transition-all hover:-translate-y-1 active:scale-95"
                             >
-                                Réinitialiser les filtres
+                                <span className="material-icons-outlined text-lg">restart_alt</span>
+                                Tout réinitialiser
                             </button>
                         </div>
                     )}
 
                     {/* État vide sans filtre */}
                     {!loading && filteredEvents.length === 0 && !hasActiveFilters && (
-                        <div className="flex flex-col items-center justify-center py-20 text-center">
-                            <div className="w-20 h-20 bg-muted rounded-2xl flex items-center justify-center mb-4">
-                                <span className="material-icons-outlined text-4xl text-muted-foreground">event_busy</span>
+                        <div className="flex flex-col items-center justify-center py-32 text-center bg-white rounded-3xl border border-dashed border-slate-300">
+                            <div className="w-24 h-24 bg-emerald-50 rounded-full flex items-center justify-center mb-6">
+                                <span className="material-icons-outlined text-5xl text-emerald-200">park</span>
                             </div>
-                            <h3 className="text-lg font-bold text-[#1a2f28] mb-2">Aucun événement pour le moment</h3>
-                            <p className="text-sm text-muted-foreground">Cliquez sur le bouton + pour créer un spot !</p>
+                            <h3 className="text-xl font-black text-[#1a2f28] mb-2">C'est tout propre ici !</h3>
+                            <p className="text-slate-500 max-w-xs mx-auto mb-8">
+                                Aucun événement n'est prévu pour le moment. Soyez le premier à organiser une collecte !
+                            </p>
+                            <button
+                                onClick={() => setShowForm(true)}
+                                className="flex items-center gap-2 px-8 py-3.5 bg-[#33a17b] text-white text-sm font-bold rounded-2xl hover:bg-[#288a68] shadow-xl transition-all hover:-translate-y-1 active:scale-95"
+                            >
+                                <span className="material-icons-outlined text-lg">add</span>
+                                Créer un événement
+                            </button>
                         </div>
                     )}
                 </div>
