@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import NavBar from "@/app/components/navbar";
-import { getSpotsFromDb, createSpot, toggleParticipation, toggleFavorite, getParticipations, getComments, addComment } from "@/app/actions/spotActions";
+import { getSpotsFromDb, createSpot, toggleParticipation, toggleFavorite, getParticipations, getFavorites, getComments, addComment } from "@/app/actions/spotActions";
 import SpotFormModal from "@/app/components/SpotFormModal";
 
 // Config des matières pour l'affichage
@@ -104,32 +104,42 @@ export default function EventPage() {
     // Verrou pour éviter les erreurs "InvalidStateError" sur navigator.share (un seul partage à la fois)
     const isSharingRef = useRef(false);
 
-    // Charger l'auteur mémorisé au montage
+    // Charger les données initiales
     useEffect(() => {
         const saved = localStorage.getItem('cleanspot_username');
+        const effectiveName = saved || 'Utilisateur';
         if (saved) {
             setUserName(saved);
             setCommentAuthor(saved);
         }
+        loadEvents(effectiveName);
     }, []);
 
-    useEffect(() => {
-        loadEvents();
-    }, []);
-
-    const loadEvents = async () => {
+    const loadEvents = async (userOverride?: string) => {
+        const currentUserName = userOverride || userName;
         setLoading(true);
         const res = await getSpotsFromDb();
         if (res.success) {
-            const eventsOnly = res.data.filter((s: any) => s.type === 'Event');
-            setAllEvents(eventsOnly);
-            for (const ev of eventsOnly) {
+            const filteredData = res.data.filter((s: any) => s.type === 'Event' || s.type === 'Signalement');
+            setAllEvents(filteredData);
+
+            for (const ev of filteredData) {
+                // Participations
                 const pRes = await getParticipations(ev.id);
                 if (pRes.success) {
                     setParticipationCounts(prev => ({ ...prev, [ev.id]: pRes.count ?? 0 }));
                     setUserParticipations(prev => ({
                         ...prev,
-                        [ev.id]: (pRes.data ?? []).some((p: any) => p.userName === userName),
+                        [ev.id]: (pRes.data ?? []).some((p: any) => p.userName === currentUserName),
+                    }));
+                }
+
+                // Favoris
+                const fRes = await getFavorites(ev.id);
+                if (fRes.success) {
+                    setUserFavorites(prev => ({
+                        ...prev,
+                        [ev.id]: (fRes.data ?? []).some((f: any) => f.userName === currentUserName),
                     }));
                 }
             }
@@ -381,51 +391,51 @@ export default function EventPage() {
     return (
         <div className="bg-[#f4f6f5] text-foreground min-h-screen">
             <NavBar />
-            <main className="max-w-[1400px] mx-auto px-4 md:px-8 py-6 md:py-10 flex flex-col lg:flex-row gap-8">
+            <main className="max-w-[1400px] mx-auto px-4 md:px-8 py-4 md:py-6 flex flex-col lg:flex-row gap-6">
                 {/* Sidebar - Filtres */}
-                <aside className="w-full lg:w-80 flex-shrink-0 lg:sticky lg:top-6 lg:self-start space-y-5">
+                <aside className="w-full lg:w-64 flex-shrink-0 lg:sticky lg:top-6 lg:self-start space-y-4">
                     {/* Filtre Matières */}
-                    <div className="bg-white rounded-2xl border border-slate-200/60 p-5 shadow-sm">
-                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2">
-                            <span className="material-icons-outlined text-base">recycling</span>
+                    <div className="bg-white rounded-xl border border-slate-200/60 p-4 shadow-sm">
+                        <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+                            <span className="material-icons-outlined text-sm">recycling</span>
                             Type de déchets
                         </h3>
-                        <div className="flex flex-wrap gap-2">
+                        <div className="flex flex-wrap gap-1.5">
                             {MATERIAL_OPTIONS.map((mat) => {
                                 const isActive = selectedMaterials.includes(mat.label);
                                 return (
                                     <button
                                         key={mat.label}
                                         onClick={() => toggleMaterialFilter(mat.label)}
-                                        className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-[11px] font-bold transition-all border-2 ${isActive
+                                        className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[10px] font-bold transition-all border-2 ${isActive
                                             ? `${mat.activeBg} text-white border-transparent shadow-md scale-105`
                                             : `${mat.bg} ${mat.text} border-transparent hover:border-current hover:shadow-sm`
                                             }`}
                                     >
-                                        <span className="material-icons-outlined text-sm">{mat.icon}</span>
+                                        <span className="material-icons-outlined text-xs">{mat.icon}</span>
                                         {mat.label}
                                     </button>
                                 );
                             })}
                         </div>
                         {selectedMaterials.length > 0 && (
-                            <p className="text-[11px] text-[#33a17b] font-semibold mt-3">
+                            <p className="text-[10px] text-[#33a17b] font-semibold mt-2.5">
                                 {selectedMaterials.length} filtre(s) actif(s)
                             </p>
                         )}
                     </div>
 
                     {/* Filtre Distance */}
-                    <div className="bg-white rounded-2xl border border-slate-200/60 p-5 shadow-sm">
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                                <span className="material-icons-outlined text-base">near_me</span>
+                    <div className="bg-white rounded-xl border border-slate-200/60 p-4 shadow-sm">
+                        <div className="flex justify-between items-center mb-3">
+                            <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                                <span className="material-icons-outlined text-sm">near_me</span>
                                 Distance
                             </h3>
                             {distanceEnabled && (
                                 <button
                                     onClick={() => setDistanceEnabled(false)}
-                                    className="text-[11px] text-rose-500 font-bold hover:underline"
+                                    className="text-[10px] text-rose-500 font-bold hover:underline"
                                 >
                                     Désactiver
                                 </button>
@@ -434,9 +444,9 @@ export default function EventPage() {
                         {geoStatus === 'idle' && (
                             <button
                                 onClick={requestGeolocation}
-                                className="w-full py-3 bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl text-xs font-bold text-[#1a2f28] hover:bg-emerald-50 hover:border-[#33a17b] transition-all flex items-center justify-center gap-2"
+                                className="w-full py-2 bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl text-[10px] font-bold text-[#1a2f28] hover:bg-emerald-50 hover:border-[#33a17b] transition-all flex items-center justify-center gap-2"
                             >
-                                <span className="material-icons-outlined text-base">my_location</span>
+                                <span className="material-icons-outlined text-sm">my_location</span>
                                 Activer la géolocalisation
                             </button>
                         )}
@@ -456,10 +466,10 @@ export default function EventPage() {
                             </div>
                         )}
                         {geoStatus === 'granted' && (
-                            <div className="space-y-3">
+                            <div className="space-y-2">
                                 <div className="flex justify-between items-center">
-                                    <span className="text-xs text-slate-500">Rayon max</span>
-                                    <span className={`text-sm font-bold ${distanceEnabled ? 'text-[#33a17b]' : 'text-[#1a2f28]'}`}>{distanceKm} km</span>
+                                    <span className="text-[10px] text-slate-500">Rayon max</span>
+                                    <span className={`text-xs font-bold ${distanceEnabled ? 'text-[#33a17b]' : 'text-[#1a2f28]'}`}>{distanceKm} km</span>
                                 </div>
                                 <input
                                     type="range"
@@ -470,16 +480,16 @@ export default function EventPage() {
                                         setDistanceKm(Number(e.target.value));
                                         if (!distanceEnabled) setDistanceEnabled(true);
                                     }}
-                                    className="w-full h-2 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-[#33a17b]"
+                                    className="w-full h-1.5 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-[#33a17b]"
                                 />
-                                <div className="flex justify-between text-[11px] text-slate-400 font-semibold">
+                                <div className="flex justify-between text-[10px] text-slate-400 font-semibold">
                                     <span>1 km</span>
                                     <span>50 km</span>
                                 </div>
                                 {!distanceEnabled && (
                                     <button
                                         onClick={() => setDistanceEnabled(true)}
-                                        className="w-full py-2.5 bg-[#1a2f28] text-white text-xs font-bold rounded-xl hover:bg-[#2a453c] transition-all"
+                                        className="w-full py-2 bg-[#1a2f28] text-white text-[10px] font-bold rounded-xl hover:bg-[#2a453c] transition-all"
                                     >
                                         Appliquer le filtre distance
                                     </button>
@@ -489,20 +499,20 @@ export default function EventPage() {
                     </div>
 
                     {/* Calendrier */}
-                    <div className="bg-white rounded-2xl border border-slate-200/60 p-5 shadow-sm">
-                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2">
-                            <span className="material-icons-outlined text-base">calendar_today</span>
+                    <div className="bg-white rounded-xl border border-slate-200/60 p-4 shadow-sm">
+                        <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+                            <span className="material-icons-outlined text-sm">calendar_today</span>
                             Date
                         </h3>
-                        <div className="bg-slate-50 rounded-xl p-4">
-                            <div className="flex justify-between items-center mb-4">
-                                <span className="text-sm font-bold text-[#1a2f28]">{MONTH_NAMES[calMonth]} {calYear}</span>
+                        <div className="bg-slate-50 rounded-xl p-3">
+                            <div className="flex justify-between items-center mb-3">
+                                <span className="text-xs font-bold text-[#1a2f28]">{MONTH_NAMES[calMonth]} {calYear}</span>
                                 <div className="flex gap-1">
-                                    <button onClick={prevMonth} className="w-8 h-8 rounded-lg hover:bg-white flex items-center justify-center transition-colors shadow-sm">
-                                        <span className="material-icons-outlined text-base text-slate-500">chevron_left</span>
+                                    <button onClick={prevMonth} className="w-7 h-7 rounded-lg hover:bg-white flex items-center justify-center transition-colors shadow-sm">
+                                        <span className="material-icons-outlined text-sm text-slate-500">chevron_left</span>
                                     </button>
-                                    <button onClick={nextMonth} className="w-8 h-8 rounded-lg hover:bg-white flex items-center justify-center transition-colors shadow-sm">
-                                        <span className="material-icons-outlined text-base text-slate-500">chevron_right</span>
+                                    <button onClick={nextMonth} className="w-7 h-7 rounded-lg hover:bg-white flex items-center justify-center transition-colors shadow-sm">
+                                        <span className="material-icons-outlined text-sm text-slate-500">chevron_right</span>
                                     </button>
                                 </div>
                             </div>
@@ -571,21 +581,21 @@ export default function EventPage() {
                 {/* Main Content */}
                 <div className="flex-1 min-w-0">
                     {/* Header */}
-                    <div className="flex flex-col gap-5 mb-8">
+                    <div className="flex flex-col gap-4 mb-6">
                         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                             <div>
-                                <h1 className="text-2xl font-bold text-[#1a2f28]">Événements de nettoyage</h1>
-                                <p className="text-sm text-slate-500 mt-1">Rejoignez un événement près de chez vous</p>
+                                <h1 className="text-lg font-bold text-[#1a2f28]">Exploration CleanSpot</h1>
+                                <p className="text-xs text-slate-500 mt-0.5">Événements et Signalements communautaires</p>
                             </div>
                             {/* Barre de recherche */}
-                            <div className="relative w-full sm:max-w-sm">
-                                <span className="material-icons-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xl">search</span>
+                            <div className="relative w-full sm:max-w-xs">
+                                <span className="material-icons-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-lg">search</span>
                                 <input
                                     type="text"
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
-                                    placeholder="Rechercher un lieu, un parc, une rue..."
-                                    className="w-full pl-11 pr-10 py-3 bg-white rounded-2xl border border-slate-200 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#33a17b]/30 focus:border-[#33a17b]/30 transition-all text-sm"
+                                    placeholder="Rechercher..."
+                                    className="w-full pl-9 pr-8 py-2 bg-white rounded-xl border border-slate-200 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#33a17b]/30 focus:border-[#33a17b]/30 transition-all text-xs"
                                 />
                                 {searchQuery && (
                                     <button
@@ -599,18 +609,18 @@ export default function EventPage() {
                         </div>
 
                         <div className="flex justify-between items-center">
-                            <h2 className="text-lg font-bold text-[#1a2f28]">
-                                Événements <span className="text-slate-400 font-normal text-sm">({filteredEvents.length}{filteredEvents.length !== allEvents.length ? ` / ${allEvents.length}` : ''})</span>
+                            <h2 className="text-sm font-bold text-[#1a2f28]">
+                                Résultats <span className="text-slate-400 font-normal text-xs">({filteredEvents.length})</span>
                             </h2>
                             {/* Menu de tri */}
                             <div className="relative">
                                 <button
                                     onClick={() => setShowSortMenu(!showSortMenu)}
-                                    className="flex items-center gap-2 text-xs font-bold text-[#1a2f28] px-4 py-2.5 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-all shadow-sm"
+                                    className="flex items-center gap-2 text-[10px] font-bold text-[#1a2f28] px-3 py-2 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-all shadow-sm"
                                 >
-                                    <span className="material-icons-outlined text-base">sort</span>
+                                    <span className="material-icons-outlined text-sm">sort</span>
                                     {SORT_OPTIONS.find(o => o.value === sortBy)?.label}
-                                    <span className="material-icons-outlined text-base">{showSortMenu ? 'expand_less' : 'expand_more'}</span>
+                                    <span className="material-icons-outlined text-sm">{showSortMenu ? 'expand_less' : 'expand_more'}</span>
                                 </button>
                                 {showSortMenu && (
                                     <div className="absolute right-0 top-full mt-2 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden z-20 min-w-[200px]">
@@ -679,14 +689,14 @@ export default function EventPage() {
 
                     {/* Loading Skeletons */}
                     {loading && (
-                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                            {[1, 2, 3, 4].map(i => <EventSkeleton key={i} />)}
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {[1, 2, 3, 4, 5, 6].map(i => <EventSkeleton key={i} />)}
                         </div>
                     )}
 
                     {/* Grille d'événements */}
                     {!loading && filteredEvents.length > 0 && (
-                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                             {filteredEvents.map((event) => {
                                 const { month, day } = formatDate(event.date);
                                 const materials: string[] = event.materials ? (typeof event.materials === 'string' ? JSON.parse(event.materials) : event.materials) : [];
@@ -698,97 +708,106 @@ export default function EventPage() {
                                 const dist = getEventDistance(event);
 
                                 return (
-                                    <div key={event.id} className="bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-200/60 hover:shadow-lg transition-all group flex flex-col">
-                                        <div className="relative h-52">
+                                    <div key={event.id} className="bg-white rounded-xl overflow-hidden shadow-sm border border-slate-200/60 hover:shadow-lg transition-all group flex flex-col">
+                                        <div className="relative h-40">
                                             <img
-                                                src={event.image || `https://images.unsplash.com/photo-1595273670150-db0a3bf4424e?q=80&w=600&auto=format&fit=crop`}
+                                                src={event.image || (event.type === 'Signalement'
+                                                    ? `https://images.unsplash.com/photo-1530587191325-3db32d826c18?q=80&w=600&auto=format&fit=crop`
+                                                    : `https://images.unsplash.com/photo-1595273670150-db0a3bf4424e?q=80&w=600&auto=format&fit=crop`)}
                                                 alt={event.title}
                                                 className="w-full h-full object-cover"
                                             />
                                             <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent"></div>
-                                            {month && (
-                                                <div className="absolute top-4 left-4 bg-white rounded-xl px-3 py-2 text-center shadow-lg min-w-[56px]">
-                                                    <span className="block text-[11px] font-bold text-slate-500 uppercase leading-none">{month}</span>
-                                                    <span className="block text-2xl font-bold text-[#1a2f28] leading-tight">{day}</span>
+
+                                            {/* Type Badge */}
+                                            <div className={`absolute top-3 left-3 px-2 py-0.5 rounded-md text-[9px] font-black uppercase text-white shadow-lg ${event.type === 'Event' ? 'bg-emerald-500' : 'bg-rose-500'}`}>
+                                                {event.type === 'Event' ? 'Événement' : 'Signalement'}
+                                            </div>
+
+                                            {month && event.type === 'Event' && (
+                                                <div className="absolute top-3 right-3 bg-white rounded-lg px-2 py-1 text-center shadow-lg min-w-[40px]">
+                                                    <span className="block text-[8px] font-bold text-slate-500 uppercase leading-none">{month}</span>
+                                                    <span className="block text-lg font-bold text-[#1a2f28] leading-tight">{day}</span>
                                                 </div>
                                             )}
+
                                             {dist !== null && (
-                                                <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur-sm rounded-lg px-2.5 py-1 shadow-sm">
-                                                    <span className="text-[11px] font-bold text-[#1a2f28] flex items-center gap-1">
-                                                        <span className="material-icons-outlined text-sm text-[#33a17b]">near_me</span>
+                                                <div className="absolute bottom-3 left-3 bg-white/90 backdrop-blur-sm rounded-lg px-2 py-0.5 shadow-sm">
+                                                    <span className="text-[9px] font-bold text-[#1a2f28] flex items-center gap-1">
+                                                        <span className="material-icons-outlined text-xs text-[#33a17b]">near_me</span>
                                                         {dist < 1 ? `${Math.round(dist * 1000)} m` : `${dist.toFixed(1)} km`}
                                                     </span>
                                                 </div>
                                             )}
-                                            <div className="absolute top-4 right-4 flex gap-2">
+                                            <div className="absolute bottom-3 right-3 flex gap-1.5">
                                                 <button
                                                     onClick={() => handleShare(event)}
-                                                    className="w-10 h-10 bg-white/90 backdrop-blur-md rounded-xl flex items-center justify-center text-[#1a2f28] shadow-lg hover:scale-110 transition-all"
+                                                    className="w-8 h-8 bg-white/90 backdrop-blur-md rounded-lg flex items-center justify-center text-[#1a2f28] shadow-lg hover:scale-110 transition-all"
                                                     title="Partager"
                                                 >
-                                                    <span className="material-icons-outlined text-xl">share</span>
+                                                    <span className="material-icons-outlined text-lg">share</span>
                                                 </button>
                                                 <button
                                                     onClick={() => handleFavorite(event.id)}
-                                                    className={`w-10 h-10 ${isFav ? 'bg-rose-500 text-white' : 'bg-white/90 backdrop-blur-md text-rose-500'} rounded-xl flex items-center justify-center shadow-lg hover:scale-110 transition-all`}
+                                                    className={`w-8 h-8 ${isFav ? 'bg-rose-500 text-white' : 'bg-white/90 backdrop-blur-md text-rose-500'} rounded-lg flex items-center justify-center shadow-lg hover:scale-110 transition-all`}
                                                 >
-                                                    <span className="material-icons-outlined text-xl">{isFav ? 'favorite' : 'favorite_border'}</span>
+                                                    <span className="material-icons-outlined text-lg">{isFav ? 'favorite' : 'favorite_border'}</span>
                                                 </button>
                                             </div>
                                         </div>
-                                        <div className="p-5 flex-1 flex flex-col">
-                                            <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 mb-2">
-                                                <span className="material-icons-outlined text-sm">location_on</span>
+                                        <div className="p-4 flex-1 flex flex-col">
+                                            <div className="flex items-center gap-1 text-[10px] font-semibold text-slate-400 mb-1.5">
+                                                <span className="material-icons-outlined text-xs">location_on</span>
                                                 <span className="truncate">{event.address || 'Adresse non renseignée'}</span>
                                             </div>
-                                            <h3 className="text-base font-bold text-[#1a2f28] mb-2 group-hover:text-[#33a17b] transition-colors leading-snug">
+                                            <h3 className="text-sm font-bold text-[#1a2f28] mb-1 group-hover:text-[#33a17b] transition-colors leading-tight">
                                                 {event.title}
                                             </h3>
-                                            <p className="text-sm text-slate-500 line-clamp-2 mb-4 leading-relaxed">
+                                            <p className="text-[11px] text-slate-500 line-clamp-2 mb-3 leading-snug">
                                                 {event.description || 'Aucune description disponible.'}
                                             </p>
 
                                             {/* Matières */}
-                                            <div className="flex items-center mt-auto pt-4 border-t border-slate-100">
-                                                <div className="flex gap-2 flex-wrap">
+                                            <div className="flex items-center mt-auto pt-3 border-t border-slate-100">
+                                                <div className="flex gap-1.5 flex-wrap">
                                                     {materials.length > 0 ? (
                                                         materials.map((mat: string) => {
                                                             const vis = MATERIAL_VISUALS[mat] || { icon: 'help', bg: 'bg-gray-50', text: 'text-gray-600' };
                                                             return (
-                                                                <div key={mat} className={`flex items-center gap-1 px-2.5 py-1 ${vis.bg} ${vis.text} rounded-lg text-[11px] font-bold`}>
-                                                                    <span className="material-icons-outlined text-xs">{vis.icon}</span>
+                                                                <div key={mat} className={`flex items-center gap-1 px-2 py-0.5 ${vis.bg} ${vis.text} rounded-md text-[9px] font-bold`}>
+                                                                    <span className="material-icons-outlined text-[10px]">{vis.icon}</span>
                                                                     {mat}
                                                                 </div>
                                                             );
                                                         })
                                                     ) : (
-                                                        <span className="text-xs text-slate-400 italic">Aucune matière</span>
+                                                        <span className="text-[10px] text-slate-400 italic">Aucune matière</span>
                                                     )}
                                                 </div>
                                             </div>
 
                                             {/* Actions */}
-                                            <div className="flex gap-2.5 mt-4">
+                                            <div className="flex gap-2 mt-3">
                                                 <button
                                                     onClick={() => handleParticipate(event.id)}
-                                                    className={`flex-1 py-3 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${isParticipating
+                                                    className={`flex-1 py-2 text-[10px] font-black rounded-lg transition-all flex items-center justify-center gap-1.5 ${isParticipating
                                                         ? 'bg-[#33a17b] text-white shadow-md'
                                                         : 'bg-[#1a2f28] text-white hover:bg-[#2a453c] shadow-sm'
                                                         }`}
                                                 >
-                                                    <span className="material-icons-outlined text-base">{isParticipating ? 'check_circle' : 'group_add'}</span>
-                                                    {isParticipating ? 'Inscrit !' : 'Participer'}
+                                                    <span className="material-icons-outlined text-sm">{isParticipating ? 'check_circle' : 'group_add'}</span>
+                                                    {isParticipating ? 'Inscrit !' : (event.type === 'Event' ? 'Participer' : 'S\'inscrire')}
                                                     {pCount > 0 && (
-                                                        <span className="ml-0.5 px-2 py-0.5 bg-white/20 rounded-full text-[11px]">{pCount}</span>
+                                                        <span className="ml-0.5 px-1.5 py-0.5 bg-white/20 rounded-full text-[9px]">{pCount}</span>
                                                     )}
                                                 </button>
                                                 <button
                                                     onClick={() => handleToggleComments(event.id)}
-                                                    className={`px-4 py-3 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${isCommentsOpen ? 'bg-[#1a2f28] text-white' : 'bg-slate-100 text-[#1a2f28] hover:bg-slate-200'
+                                                    className={`px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${isCommentsOpen ? 'bg-[#1a2f28] text-white' : 'bg-slate-100 text-[#1a2f28] hover:bg-slate-200'
                                                         }`}
                                                 >
-                                                    <span className="material-icons-outlined text-base">chat_bubble_outline</span>
-                                                    {spotComments.length > 0 ? spotComments.length : ''}
+                                                    <span className="material-icons-outlined text-sm">chat_bubble_outline</span>
+                                                    <span className="text-[10px]">{spotComments.length > 0 ? spotComments.length : ''}</span>
                                                 </button>
                                             </div>
 
@@ -898,9 +917,9 @@ export default function EventPage() {
             <div className="fixed bottom-8 right-8 z-30">
                 <button
                     onClick={() => setShowForm(true)}
-                    className="group w-16 h-16 bg-[#1a2f28] hover:bg-[#2a453c] text-white rounded-2xl shadow-2xl flex items-center justify-center transition-all hover:scale-110 hover:shadow-[0_10px_40px_rgba(26,47,40,0.4)]"
+                    className="group w-12 h-12 bg-[#1a2f28] hover:bg-[#2a453c] text-white rounded-xl shadow-2xl flex items-center justify-center transition-all hover:scale-110 hover:shadow-[0_10px_40px_rgba(26,47,40,0.4)]"
                 >
-                    <span className="material-icons-outlined text-3xl group-hover:rotate-90 transition-transform duration-300">add</span>
+                    <span className="material-icons-outlined text-2xl group-hover:rotate-90 transition-transform duration-300">add</span>
                 </button>
             </div>
 
