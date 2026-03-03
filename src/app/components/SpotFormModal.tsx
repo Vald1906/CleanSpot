@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 interface SpotFormData {
     type: 'Event' | 'Signalement';
@@ -65,6 +65,25 @@ export default function SpotFormModal({
     const [geocoding, setGeocoding] = useState(false);
     const [addressSuggestions, setAddressSuggestions] = useState<any[]>([]);
     const [showSuggestions, setShowSuggestions] = useState(false);
+    const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // Debounce : recherche d'adresse 500ms après la dernière frappe
+    useEffect(() => {
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+
+        if (form.address.length >= 3) {
+            debounceRef.current = setTimeout(() => {
+                searchAddress(form.address);
+            }, 500);
+        } else {
+            setAddressSuggestions([]);
+            setShowSuggestions(false);
+        }
+
+        return () => {
+            if (debounceRef.current) clearTimeout(debounceRef.current);
+        };
+    }, [form.address]);
 
     // Pré-remplir le formulaire en mode édition
     useEffect(() => {
@@ -88,6 +107,16 @@ export default function SpotFormModal({
         }
     }, [mode, initialData, isOpen]);
 
+    // Charger l'auteur mémorisé si on crée un nouveau spot
+    useEffect(() => {
+        if (mode === 'create' && isOpen) {
+            const saved = typeof window !== 'undefined' ? localStorage.getItem('cleanspot_username') : null;
+            if (saved) {
+                setForm(prev => ({ ...prev, author: saved }));
+            }
+        }
+    }, [mode, isOpen]);
+
     // Mise à jour quand l'utilisateur clique sur la carte
     useEffect(() => {
         if (pickedPosition) {
@@ -106,8 +135,18 @@ export default function SpotFormModal({
         try {
             const res = await fetch(
                 `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
-                { headers: { 'Accept-Language': 'fr' } }
+                {
+                    headers: {
+                        'Accept-Language': 'fr',
+                        'User-Agent': 'CleanSpot-App/1.0 (https://github.com/Vald1906/CleanSpot)'
+                    }
+                }
             );
+
+            if (!res.ok) {
+                throw new Error(`Erreur HTTP Nominatim: ${res.status}`);
+            }
+
             const data = await res.json();
             if (data.display_name) {
                 setForm((prev) => ({ ...prev, address: data.display_name }));
@@ -126,8 +165,18 @@ export default function SpotFormModal({
         try {
             const res = await fetch(
                 `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&countrycodes=fr`,
-                { headers: { 'Accept-Language': 'fr' } }
+                {
+                    headers: {
+                        'Accept-Language': 'fr',
+                        'User-Agent': 'CleanSpot-App/1.0 (https://github.com/Vald1906/CleanSpot)'
+                    }
+                }
             );
+
+            if (!res.ok) {
+                throw new Error(`Erreur HTTP Nominatim: ${res.status}`);
+            }
+
             const data = await res.json();
             setAddressSuggestions(data);
             setShowSuggestions(true);
@@ -150,9 +199,8 @@ export default function SpotFormModal({
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         setForm((prev) => ({ ...prev, [name]: value }));
-
-        if (name === 'address') {
-            searchAddress(value);
+        if (name === 'author') {
+            localStorage.setItem('cleanspot_username', value);
         }
     };
 
@@ -257,8 +305,8 @@ export default function SpotFormModal({
                                                 }));
                                             }}
                                             className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all border-2 ${isSelected
-                                                    ? `${mat.activeBg} text-white border-transparent shadow-md`
-                                                    : `${mat.bg} ${mat.text} border-transparent hover:border-current`
+                                                ? `${mat.activeBg} text-white border-transparent shadow-md`
+                                                : `${mat.bg} ${mat.text} border-transparent hover:border-current`
                                                 }`}
                                         >
                                             <span className="material-icons-outlined text-sm">{mat.icon}</span>

@@ -1,3 +1,4 @@
+
 "use server";
 import { db } from "@/db/drizzle";
 import { spots, comments, participations, favorites } from "@/db/schema";
