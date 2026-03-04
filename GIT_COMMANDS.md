@@ -2,7 +2,7 @@
 
 Voici la liste des commandes Git utilisées pour la gestion des branches `event` et `dev` :
 
-## 1. Création et travail sur la branche `event`
+## 1. Création et travail sur la branche `event` 
 ```bash
 # Vérification de l'état initial
 git status && git branch

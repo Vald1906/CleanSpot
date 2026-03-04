@@ -31,6 +31,8 @@ export const spots = mysqlTable("spots", {
     // Types de matières (stocké en JSON : ["Plastique", "Verre", ...])
     materials: json("materials"),
 
+    maxParticipants: int("max_participants").default(0),
+
     createdAt: datetime("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
 

@@ -15,6 +15,7 @@ interface SpotFormData {
     hours: string;
     urgency: string;
     materials: string[];
+    maxParticipants: number;
 }
 
 const MATERIAL_OPTIONS = [
@@ -50,6 +51,7 @@ const emptyForm: SpotFormData = {
     hours: '',
     urgency: '',
     materials: [],
+    maxParticipants: 0,
 };
 
 export default function SpotFormModal({
@@ -101,6 +103,7 @@ export default function SpotFormModal({
                 hours: initialData.hours || '',
                 urgency: initialData.urgency || '',
                 materials: (initialData as any).materials || [],
+                maxParticipants: (initialData as any).maxParticipants || 0,
             });
         } else if (mode === 'create') {
             setForm(emptyForm);
@@ -271,7 +274,12 @@ export default function SpotFormModal({
                                     <button
                                         key={t}
                                         type="button"
-                                        onClick={() => setForm((prev) => ({ ...prev, type: t }))}
+                                        onClick={() => setForm((prev) => {
+                                            const newType = t;
+                                            let newMax = prev.maxParticipants;
+                                            if (newType === 'Signalement' && newMax > 5) newMax = 5;
+                                            return { ...prev, type: newType, maxParticipants: newMax };
+                                        })}
                                         className={`flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border-2 text-xs font-bold transition-all ${form.type === t
                                             ? 'border-[#1a2f28] bg-[#1a2f28] text-white shadow-lg'
                                             : 'border-muted bg-white text-muted-foreground hover:border-[#33a17b]'
@@ -477,6 +485,29 @@ export default function SpotFormModal({
                                 </div>
                             </div>
                         )}
+
+                        {/* Limite de participants */}
+                        <div>
+                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2 block">
+                                Limite de participants {form.type === 'Signalement' && <span className="text-rose-500 font-black">(Max 5)</span>}
+                            </label>
+                            <div className="relative">
+                                <span className="material-icons-outlined absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-lg">group</span>
+                                <input
+                                    type="number"
+                                    name="maxParticipants"
+                                    value={form.maxParticipants || ''}
+                                    onChange={(e) => {
+                                        let val = parseInt(e.target.value) || 0;
+                                        if (form.type === 'Signalement' && val > 5) val = 5;
+                                        if (val < 0) val = 0;
+                                        setForm(prev => ({ ...prev, maxParticipants: val }));
+                                    }}
+                                    placeholder="Ex: 10 (0 pour illimité)"
+                                    className="w-full pl-10 pr-4 py-3 bg-muted/30 border border-muted rounded-xl text-sm text-[#1a2f28] placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-[#33a17b]/30 focus:border-[#33a17b] transition-all"
+                                />
+                            </div>
+                        </div>
 
                         {/* Image (Local Upload) */}
                         <div>
