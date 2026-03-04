@@ -41,6 +41,7 @@ export async function createSpot(spotData: {
     hours?: string;
     urgency?: string;
     materials?: string[];
+    maxParticipants?: number;
 }) {
     try {
         const result = await db.insert(spots).values({
@@ -56,6 +57,7 @@ export async function createSpot(spotData: {
             hours: spotData.hours || null,
             urgency: spotData.urgency || null,
             materials: spotData.materials || null,
+            maxParticipants: spotData.maxParticipants || 0,
         });
         const insertId = (result as any)[0]?.insertId;
 
@@ -85,6 +87,7 @@ export async function updateSpot(
         hours?: string;
         urgency?: string;
         materials?: string[];
+        maxParticipants?: number;
     }
 ) {
     try {
@@ -101,6 +104,7 @@ export async function updateSpot(
         if (spotData.hours !== undefined) updateData.hours = spotData.hours;
         if (spotData.urgency !== undefined) updateData.urgency = spotData.urgency;
         if (spotData.materials !== undefined) updateData.materials = spotData.materials;
+        if (spotData.maxParticipants !== undefined) updateData.maxParticipants = spotData.maxParticipants;
 
         await db.update(spots).set(updateData).where(eq(spots.id, id));
 
@@ -180,6 +184,14 @@ export async function toggleParticipation(spotId: number, userName: string) {
             revalidatePath("/map");
             return { success: true, participating: false };
         } else {
+            // Vérifier la limite avant d'ajouter
+            const spot = await db.select().from(spots).where(eq(spots.id, spotId)).then(rows => rows[0]);
+            if (spot && spot.maxParticipants !== null && spot.maxParticipants > 0) {
+                const currentCount = await db.select().from(participations).where(eq(participations.spotId, spotId)).then(rows => rows.length);
+                if (currentCount >= spot.maxParticipants) {
+                    return { success: false, error: "Désolé, la limite de participants est atteinte." };
+                }
+            }
             await db.insert(participations).values({ spotId, userName });
             revalidatePath("/event");
             revalidatePath("/map");
@@ -222,6 +234,38 @@ export async function toggleFavorite(spotId: number, userName: string) {
         }
     } catch (error) {
         console.error("Erreur toggle favori:", error);
+        return { success: false, error: String(error) };
+    }
+}
+// ========== PROFIL UTILISATEUR ==========
+
+export async function getUserProfileData(userName: string) {
+    try {
+        // 1. Spots créés par l'utilisateur
+        const createdSpots = await db.select().from(spots).where(eq(spots.author, userName));
+
+        // 2. Spots où l'utilisateur participe
+        const participatedEntries = await db.select().from(participations).where(eq(participations.userName, userName));
+        const participatedSpots = participatedEntries.length > 0
+            ? await db.select().from(spots).where(inArray(spots.id, participatedEntries.map(p => p.spotId)))
+            : [];
+
+        // 3. Spots favoris de l'utilisateur
+        const favoriteEntries = await db.select().from(favorites).where(eq(favorites.userName, userName));
+        const favoriteSpots = favoriteEntries.length > 0
+            ? await db.select().from(spots).where(inArray(spots.id, favoriteEntries.map(f => f.spotId)))
+            : [];
+
+        return {
+            success: true,
+            data: {
+                created: createdSpots,
+                participated: participatedSpots,
+                favorites: favoriteSpots
+            }
+        };
+    } catch (error) {
+        console.error("Erreur récupération données profil:", error);
         return { success: false, error: String(error) };
     }
 }

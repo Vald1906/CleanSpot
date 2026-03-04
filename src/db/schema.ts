@@ -30,6 +30,8 @@ export const spots = mysqlTable("spots", {
 
     materials: json("materials"),
 
+    maxParticipants: int("max_participants").default(0),
+
     createdAt: datetime("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
