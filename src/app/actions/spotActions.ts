@@ -1,7 +1,7 @@
-
 "use server";
 import { db } from "@/db/drizzle";
-import { spots, comments, participations, favorites } from "@/db/schema";
+// AJOUT de archived_spots dans l'import ci-dessous
+import { spots, archived_spots, comments, participations, favorites } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
@@ -12,6 +12,17 @@ export async function getSpotsFromDb() {
         return { success: true, data };
     } catch (error) {
         console.error("Erreur DB:", error);
+        return { success: false, data: [] };
+    }
+}
+
+// NOUVELLE FONCTION AJOUTÉE
+export async function getArchivedSpotsFromDb() {
+    try {
+        const data = await db.select().from(archived_spots);
+        return { success: true, data };
+    } catch (error) {
+        console.error("Erreur DB Archived:", error);
         return { success: false, data: [] };
     }
 }
@@ -106,7 +117,6 @@ export async function updateSpot(
 // ---------- DELETE ----------
 export async function deleteSpot(id: number) {
     try {
-        // Supprimer aussi les données liées
         await db.delete(comments).where(eq(comments.spotId, id));
         await db.delete(participations).where(eq(participations.spotId, id));
         await db.delete(favorites).where(eq(favorites.spotId, id));
@@ -160,7 +170,6 @@ export async function getParticipations(spotId: number) {
 
 export async function toggleParticipation(spotId: number, userName: string) {
     try {
-        // Vérifie si déjà participant
         const existing = await db.select().from(participations)
             .where(and(eq(participations.spotId, spotId), eq(participations.userName, userName)));
 

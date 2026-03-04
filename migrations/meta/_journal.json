@@ -15,6 +15,13 @@
       "when": 1772021624344,
       "tag": "0001_aberrant_payback",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1772547438109,
+      "tag": "0002_noisy_starfox",
+      "breakpoints": true
     }
   ]
 }

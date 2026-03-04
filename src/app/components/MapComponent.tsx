@@ -62,6 +62,7 @@ const MapContent = memo(({ onSelectSpot, selectedSpot, dbSpots, zoomLevel, setZo
             key="static-map-instance"
             center={[48.8566, 2.3522]}
             zoom={13}
+            // 1. On s'assure que c'est bien sur false
             zoomControl={false}
             style={{ height: "100%", width: "100%" }}
             trackResize={false}
@@ -70,7 +71,10 @@ const MapContent = memo(({ onSelectSpot, selectedSpot, dbSpots, zoomLevel, setZo
                 url="https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png"
                 attribution='&copy; Stadia Maps'
             />
-            <ZoomControl position="bottomleft" />
+
+            {/* 2. SUPPRIMER OU COMMENTER LA LIGNE CI-DESSOUS */}
+            {/* <ZoomControl position="bottomleft" /> */}
+
             <RecenterMap spot={selectedSpot} />
             <ZoomHandler onZoomChange={setZoomLevel} />
 

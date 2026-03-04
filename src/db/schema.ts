@@ -28,10 +28,33 @@ export const spots = mysqlTable("spots", {
     hours: varchar("hours", { length: 100 }),
     urgency: varchar("urgency", { length: 50 }),
 
-    // Types de matières (stocké en JSON : ["Plastique", "Verre", ...])
     materials: json("materials"),
 
     createdAt: datetime("created_at").default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const archived_spots = mysqlTable("archived_spots", {
+    id: int("id").primaryKey(),
+
+    type: mysqlEnum("type", ['Event', 'Signalement', 'Point de Tri']).notNull(),
+    title: varchar("title", { length: 255 }).notNull(),
+    description: text("description"),
+    author: varchar("author", { length: 100 }).notNull(),
+
+    latitude: double("latitude").notNull(),
+    longitude: double("longitude").notNull(),
+    address: varchar("address", { length: 255 }).notNull(),
+
+    image: longtext("image"),
+    date: date("date"),
+    hours: varchar("hours", { length: 100 }),
+    urgency: varchar("urgency", { length: 50 }),
+
+    materials: json("materials"),
+
+    createdAt: datetime("created_at"),
+
+    archivedAt: datetime("archived_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
 // ---------- COMMENTAIRES ----------
@@ -58,3 +81,29 @@ export const favorites = mysqlTable("favorites", {
     userName: varchar("user_name", { length: 100 }).notNull(),
     createdAt: datetime("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
+
+//DELIMITER //
+//CREATE EVENT IF NOT EXISTS `archive_expired_events`
+//ON SCHEDULE EVERY 1 HOUR
+//DO
+//BEGIN
+//    -- 1. Copier les événements passés vers l'archive
+//    INSERT INTO archived_spots (
+//        id, type, title, description, author,
+//        latitude, longitude, address, image,
+//        date, hours, urgency, created_at, materials
+//    )
+//    SELECT
+//        id, type, title, description, author,
+//        latitude, longitude, address, image,
+//        date, hours, urgency, created_at, materials
+//    FROM spots
+//    WHERE (date < CURDATE())
+//       OR (date = CURDATE() AND hours < CURTIME());
+//
+//    -- 2. Supprimer les événements passés de la table active
+//    DELETE FROM spots
+//    WHERE (date < CURDATE())
+//       OR (date = CURDATE() AND hours < CURTIME());
+//END //
+//DELIMITER ;

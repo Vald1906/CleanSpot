@@ -8,7 +8,7 @@ import SpotFormModal from "@/app/components/SpotFormModal";
 
 const user = {
     name: "Jean Dupont",
-    role: "admin"
+    role: "user"
 };
 
 const MATERIAL_VISUALS: Record<string, { icon: string; bg: string; text: string }> = {
