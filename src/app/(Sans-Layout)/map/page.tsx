@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 import NavBar from "@/app/components/navbar";
 import { getSpotsFromDb, createSpot, updateSpot, deleteSpot, toggleParticipation, toggleFavorite, getComments, addComment, getParticipations } from "@/app/actions/spotActions";
 import SpotFormModal from "@/app/components/SpotFormModal";
+import { useNotification } from "@/app/context/NotificationContext";
 
 const user = {
     name: "Jean Dupont",
@@ -51,7 +52,8 @@ export default function MapPage() {
     const [showComments, setShowComments] = useState(false);
     const [commentInput, setCommentInput] = useState('');
     const [commentAuthor, setCommentAuthor] = useState('');
-    const [userName] = useState('Jean Dupont');
+    const [userName] = useState('Utilisateur');
+    const { showNotification } = useNotification();
 
     useEffect(() => {
         setMounted(true);
@@ -85,9 +87,21 @@ export default function MapPage() {
 
     const handleFormSubmit = async (data: any) => {
         if (formMode === 'create') {
-            await createSpot(data);
+            const res = await createSpot(data);
+            if (res.success) {
+                const typeLabel = data.type === 'Event' ? 'Événement' : 'Signalement';
+                showNotification(`${typeLabel} créé avec succès !`, "success");
+            } else {
+                showNotification("Erreur lors de la création du spot.", "error");
+            }
         } else if (formMode === 'edit' && editData?.id) {
-            await updateSpot(editData.id, data);
+            const res = await updateSpot(editData.id, data);
+            if (res.success) {
+                const typeLabel = data.type === 'Event' ? 'Événement' : 'Signalement';
+                showNotification(`${typeLabel} modifié avec succès !`, "success");
+            } else {
+                showNotification("Erreur lors de la modification du spot.", "error");
+            }
         }
         setShowForm(false);
         setPickingMode(false);
@@ -312,8 +326,21 @@ export default function MapPage() {
                                     <div className="flex flex-col gap-2 pt-2">
                                         {/* Boutons Sociaux */}
                                         <div className="flex gap-2">
-                                            <button onClick={handleParticipateMap} className="flex-1 py-3 bg-emerald-600 text-white text-sm font-bold rounded-2xl">
-                                                {isParticipating ? 'Inscrit !' : 'Participer'}
+                                            <button
+                                                onClick={handleParticipateMap}
+                                                className={`flex-1 py-3 text-sm font-bold rounded-2xl transition-all flex items-center justify-center gap-1.5 ${isParticipating
+                                                    ? 'bg-[#33a17b] text-white shadow-lg shadow-emerald-200'
+                                                    : (!isParticipating && selectedSpot.maxParticipants > 0 && participantCount >= selectedSpot.maxParticipants)
+                                                        ? 'bg-slate-100 text-slate-400 cursor-not-allowed shadow-none border border-slate-200'
+                                                        : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-200'
+                                                    }`}
+                                                disabled={!isParticipating && selectedSpot.maxParticipants > 0 && participantCount >= selectedSpot.maxParticipants}
+                                            >
+                                                <span className="material-icons-outlined text-sm">{isParticipating ? 'check_circle' : (!isParticipating && selectedSpot.maxParticipants > 0 && participantCount >= selectedSpot.maxParticipants) ? 'block' : 'group_add'}</span>
+                                                {isParticipating ? 'Inscrit !' : (selectedSpot.maxParticipants > 0 && participantCount >= selectedSpot.maxParticipants) ? 'Complet' : 'Participer'}
+                                                {participantCount > 0 && (
+                                                    <span className="ml-1 px-1.5 py-0.5 bg-white/20 rounded-full text-[9px]">{participantCount}</span>
+                                                )}
                                             </button>
                                             <button onClick={() => setShowComments(!showComments)} className="px-4 py-3 bg-slate-100 rounded-2xl">
                                                 <span className="material-icons-outlined text-sm">chat_bubble_outline</span>

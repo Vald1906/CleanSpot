@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { NotificationProvider } from "@/app/context/NotificationContext";
 
 const geistSans = Geist({
     variable: "--font-geist-sans",
@@ -15,6 +16,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
     title: "CleanSpot",
     description: "Plateforme écologique pour le signalement de spots",
+    icons: {
+        icon: "/images/cleanspot.png",
+    },
 };
 
 export default function RootLayout({
@@ -34,7 +38,9 @@ export default function RootLayout({
             <body
                 className={`${geistSans.variable} ${geistMono.variable} antialiased`}
             >
-                {children}
+                <NotificationProvider>
+                    {children}
+                </NotificationProvider>
             </body>
         </html>
     );

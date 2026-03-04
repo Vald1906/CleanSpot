@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import NavBar from "@/app/components/navbar";
 import { getSpotsFromDb, createSpot, toggleParticipation, toggleFavorite, getParticipations, getFavorites, getComments, addComment } from "@/app/actions/spotActions";
 import SpotFormModal from "@/app/components/SpotFormModal";
+import { useNotification } from "@/app/context/NotificationContext";
 
 // Config des matières pour l'affichage
 const MATERIAL_OPTIONS = [
@@ -70,6 +71,7 @@ export default function EventPage() {
     const [allEvents, setAllEvents] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [showForm, setShowForm] = useState(false);
+    const { showNotification } = useNotification();
 
     // --- FILTRES ---
     const [searchQuery, setSearchQuery] = useState('');
@@ -255,7 +257,13 @@ export default function EventPage() {
 
     // --- Handlers ---
     const handleCreateSpot = async (data: any) => {
-        await createSpot(data);
+        const res = await createSpot(data);
+        if (res.success) {
+            const typeLabel = data.type === 'Event' ? 'Événement' : 'Signalement';
+            showNotification(`${typeLabel} créé avec succès !`, "success");
+        } else {
+            showNotification(`Erreur lors de la création du ${data.type === 'Event' ? 'événement' : 'signalement'}.`, "error");
+        }
         setShowForm(false);
         await loadEvents();
     };
@@ -792,11 +800,14 @@ export default function EventPage() {
                                                     onClick={() => handleParticipate(event.id)}
                                                     className={`flex-1 py-2 text-[10px] font-black rounded-lg transition-all flex items-center justify-center gap-1.5 ${isParticipating
                                                         ? 'bg-[#33a17b] text-white shadow-md'
-                                                        : 'bg-[#1a2f28] text-white hover:bg-[#2a453c] shadow-sm'
+                                                        : (event.maxParticipants > 0 && pCount >= event.maxParticipants)
+                                                            ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                                                            : 'bg-[#1a2f28] text-white hover:bg-[#2a453c] shadow-sm'
                                                         }`}
+                                                    disabled={!isParticipating && event.maxParticipants > 0 && pCount >= event.maxParticipants}
                                                 >
-                                                    <span className="material-icons-outlined text-sm">{isParticipating ? 'check_circle' : 'group_add'}</span>
-                                                    {isParticipating ? 'Inscrit !' : (event.type === 'Event' ? 'Participer' : 'S\'inscrire')}
+                                                    <span className="material-icons-outlined text-sm">{isParticipating ? 'check_circle' : (event.maxParticipants > 0 && pCount >= event.maxParticipants && !isParticipating) ? 'block' : 'group_add'}</span>
+                                                    {isParticipating ? 'Inscrit !' : (event.maxParticipants > 0 && pCount >= event.maxParticipants) ? 'Complet' : 'Participer'}
                                                     {pCount > 0 && (
                                                         <span className="ml-0.5 px-1.5 py-0.5 bg-white/20 rounded-full text-[9px]">{pCount}</span>
                                                     )}

@@ -1,0 +1,1 @@
+ALTER TABLE `spots` ADD `max_participants` int DEFAULT 0;

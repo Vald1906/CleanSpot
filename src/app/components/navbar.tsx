@@ -8,7 +8,7 @@ export default function NavBar() {
     const pathname = usePathname();
 
     // Vérifie si le lien est la page actuelle
-   const isActive = (path: string) => pathname === path;
+    const isActive = (path: string) => pathname === path;
 
     const navLinks = [
         { name: "Fil d'actualité", href: "/dashboard" },
@@ -19,13 +19,16 @@ export default function NavBar() {
     return (
         <nav className="bg-[#1a2f28] text-white sticky top-0 z-[60] px-6 h-16 flex items-center shadow-lg">
             <div className="max-w-7xl mx-auto w-full flex items-center justify-between">
-                
-                {/* Logo Section */}
-                <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
-                        <span className="material-icons-outlined text-white text-xl">eco</span>
+
+                <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 flex items-center justify-center">
+                        <img
+                            src="/images/cleanspot.png"
+                            alt="CleanSpot Logo"
+                            className="w-full h-full object-contain"
+                        />
                     </div>
-                    <a href="/" className="text-xl font-bold tracking-tight">
+                    <a href="/" className="text-2xl font-black tracking-tighter transition-opacity hover:opacity-80">
                         CleanSpot
                     </a>
                 </div>
@@ -33,12 +36,11 @@ export default function NavBar() {
                 {/* Navigation - Barre rose dynamique */}
                 <div className="hidden md:flex items-center gap-8 h-16">
                     {navLinks.map((link) => (
-                        <a 
+                        <a
                             key={link.href}
-                            href={link.href} 
-                            className={`text-sm font-medium transition-all relative h-full flex items-center ${
-                                isActive(link.href) ? 'text-white' : 'text-white/70 hover:text-white'
-                            }`}
+                            href={link.href}
+                            className={`text-sm font-medium transition-all relative h-full flex items-center ${isActive(link.href) ? 'text-white' : 'text-white/70 hover:text-white'
+                                }`}
                         >
                             {link.name}
                             {isActive(link.href) && (
@@ -50,7 +52,7 @@ export default function NavBar() {
 
                 {/* Actions & Profile */}
                 <div className="flex items-center gap-4">
-                    
+
                     {/* Boutons Auth */}
                     <div className="hidden lg:flex items-center gap-4">
                         <a href="/login" className="text-sm font-medium text-white/80 hover:text-white">
@@ -67,12 +69,12 @@ export default function NavBar() {
                     <button className="p-2 text-white/80 hover:text-white transition-colors">
                         <span className="material-icons-outlined">notifications</span>
                     </button>
-                    
+
                     <div className="h-8 w-[1px] bg-white/20 mx-1"></div>
-                    
+
                     {/* Menu Profil */}
                     <div className="relative">
-                        <button 
+                        <button
                             onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
                             className="flex items-center gap-3 pl-2 group"
                         >
@@ -86,10 +88,15 @@ export default function NavBar() {
                             </div>
                         </button>
 
-                        {/* Dropdown - Uniquement Contact */}
+                        {/* Dropdown - Profil & Contact */}
                         {isProfileMenuOpen && (
-                            <div className="absolute right-0 mt-4 w-40 bg-white rounded-xl shadow-xl py-2 z-50 border border-gray-100">
-                                <a href="/contact" className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#1a2f28] transition-colors">
+                            <div className="absolute right-0 mt-4 w-48 bg-white rounded-xl shadow-xl py-2 z-50 border border-gray-100 overflow-hidden">
+                                <a href="/profil" className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-emerald-50 hover:text-[#1a2f28] transition-colors">
+                                    <span className="material-icons-outlined text-[18px]">person</span>
+                                    Mon Profil
+                                </a>
+                                <div className="h-[1px] bg-gray-100 my-1 mx-2"></div>
+                                <a href="/contact" className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-emerald-50 hover:text-[#1a2f28] transition-colors">
                                     <span className="material-icons-outlined text-[18px]">mail</span>
                                     Contact
                                 </a>
