@@ -1,19 +1,19 @@
 "use client";
 
 import React, { useState } from 'react';
-import NavBar from "@/app/components/navbar";
 
 export default function ContactPage() {
     const [isSubmitted, setIsSubmitted] = useState(false);
 
-    const handleSubmit = (e: React.FormEvent) => {
+    // Cette fonction sera reliée à une Server Action plus tard
+    const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
+        // Simulation d'envoi
         setIsSubmitted(true);
     };
 
     return (
         <div className="flex min-h-screen w-full bg-[#F8FAFC] font-sans flex-col">
-            <NavBar />
 
             <main className="flex-grow flex items-center justify-center p-6 mt-12">
                 <div className="max-w-5xl w-full grid grid-cols-1 lg:grid-cols-2 gap-12 items-stretch">
@@ -42,6 +42,7 @@ export default function ContactPage() {
                                             </label>
                                             <input 
                                                 required
+                                                name="nom" // Correspond à ta colonne 'nom'
                                                 type="text" 
                                                 placeholder="Nom"
                                                 className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-3 text-sm text-slate-600 placeholder:text-slate-300 outline-none focus:ring-4 focus:ring-[#1a2f28]/5 focus:border-[#1a2f28]/20 transition-all"
@@ -53,6 +54,7 @@ export default function ContactPage() {
                                             </label>
                                             <input 
                                                 required
+                                                name="prenom" // Correspond à ta colonne 'prenom'
                                                 type="text" 
                                                 placeholder="Prénom"
                                                 className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-3 text-sm text-slate-600 placeholder:text-slate-300 outline-none focus:ring-4 focus:ring-[#1a2f28]/5 focus:border-[#1a2f28]/20 transition-all"
@@ -66,6 +68,7 @@ export default function ContactPage() {
                                         </label>
                                         <input 
                                             required
+                                            name="email" // Correspond à ta colonne 'email'
                                             type="email" 
                                             placeholder="jean@exemple.fr" 
                                             className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-3 text-sm text-slate-600 placeholder:text-slate-300 outline-none focus:ring-4 focus:ring-[#1a2f28]/5 focus:border-[#1a2f28]/20 transition-all"
@@ -78,12 +81,13 @@ export default function ContactPage() {
                                         </label>
                                         <textarea 
                                             required
+                                            name="content" // Correspond à ta colonne 'content' dans la table comments (ou similaire)
                                             placeholder="Comment pouvons-nous vous aider ?" 
                                             className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-3 text-sm text-slate-600 placeholder:text-slate-300 outline-none focus:ring-4 focus:ring-[#1a2f28]/5 focus:border-[#1a2f28]/20 transition-all h-32 resize-none"
                                         ></textarea>
                                     </div>
 
-                                    {/* Verification Turnstile - Adaptée */}
+                                    {/* Verification Turnstile */}
                                     <div className="flex items-center justify-between bg-slate-50/80 border border-slate-100 rounded-xl px-4 py-2.5">
                                         <div className="flex items-center gap-3">
                                             <div className="relative flex items-center justify-center">
@@ -153,7 +157,7 @@ export default function ContactPage() {
                                 className="w-full h-full object-cover grayscale opacity-30 mix-blend-overlay transition-all duration-700 group-hover:scale-105"
                             />
                             
-                            {/* Point de localisation - Adapté en vert sombre/blanc */}
+                            {/* Point de localisation */}
                             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
                                 <div className="h-20 w-20 rounded-full border border-white/20 animate-ping"></div>
                                 <div className="h-3 w-3 bg-white rounded-full shadow-[0_0_20px_#fff] absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"></div>
@@ -171,10 +175,12 @@ export default function ContactPage() {
                             </div>
                         </div>
                     </div>
-
                 </div>
             </main>
+            
+            <footer className="mt-12 text-[10px] text-gray-400 font-medium uppercase tracking-widest text-center">
+                © 2024 CLEANSPOT DASHBOARD. TOUS DROITS RÉSERVÉS.
+            </footer>
         </div>
-        
     );
 }

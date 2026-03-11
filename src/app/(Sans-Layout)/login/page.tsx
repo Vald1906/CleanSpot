@@ -1,10 +1,15 @@
 'use client';
 
+import { useActionState } from "react";
+import { handleLogin } from "@/app/actions/login";
+
 export default function LoginPage() {
+    // Liaison avec l'action serveur
+    const [state, formAction, isPending] = useActionState(handleLogin, null);
+
     return (
         <div className="min-h-screen bg-[#f8faf9] flex flex-col items-center justify-center p-6 font-sans relative">
-            
-            {/* Bouton Retour Chic */}
+  
             <div className="absolute top-8 left-8">
                 <a 
                     href="/dashboard" 
@@ -19,7 +24,7 @@ export default function LoginPage() {
                 </a>
             </div>
 
-            {/* Logo Section - Utilise maintenant #1a2f28 */}
+            {/* Logo Section */}
             <div className="flex items-center gap-3 mb-8">
                 <div className="w-10 h-10 bg-[#1a2f28] rounded-lg flex items-center justify-center shadow-sm">
                     <span className="material-icons-outlined text-white text-2xl">eco</span>
@@ -32,12 +37,21 @@ export default function LoginPage() {
                 <h2 className="text-2xl font-bold text-[#1a2f28] mb-1">Connexion</h2>
                 <p className="text-[#1a2f28]/70 text-sm mb-8 font-medium">Bienvenue sur votre espace CleanSpot</p>
 
-                <form className="space-y-6">
+                {/* Message d'erreur discret si besoin */}
+                {state?.error && (
+                    <div className="mb-6 p-3 bg-red-50 border border-red-200 text-red-600 text-sm rounded-xl text-center font-medium">
+                        {state.error}
+                    </div>
+                )}
+
+                <form action={formAction} className="space-y-6">
                     {/* Email Field */}
                     <div>
                         <label className="block text-sm font-semibold text-[#1a2f28] mb-2">Email</label>
                         <input 
+                            name="email"
                             type="email" 
+                            required
                             placeholder="exemple@mail.com" 
                             className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-[#1a2f28] focus:ring-2 focus:ring-[#1a2f28]/10 outline-none transition-all placeholder:text-gray-300"
                         />
@@ -51,7 +65,9 @@ export default function LoginPage() {
                         </div>
                         <div className="relative">
                             <input 
+                                name="password"
                                 type="password" 
+                                required
                                 placeholder="••••••••" 
                                 className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-[#1a2f28] focus:ring-2 focus:ring-[#1a2f28]/10 outline-none transition-all placeholder:text-gray-300"
                             />
@@ -61,21 +77,15 @@ export default function LoginPage() {
                         </div>
                     </div>
 
-                    {/* Cloudflare Turnstile Mockup */}
-                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            <input type="checkbox" className="w-5 h-5 rounded border-gray-300 text-[#1a2f28] focus:ring-[#1a2f28]" />
-                            <span className="text-xs text-gray-600">Vérifier que vous êtes un humain</span>
-                        </div>
-                        <div className="flex flex-col items-center opacity-40">
-                            <span className="material-icons-outlined text-xs">navigation</span>
-                            <span className="text-[8px] font-bold">TURNSTILE</span>
-                        </div>
-                    </div>
+                
 
-                    {/* Submit Button - Couleur Navbar appliquée */}
-                    <button className="w-full bg-[#1a2f28] text-white font-bold py-3.5 rounded-xl hover:bg-[#254239] transition-all shadow-md shadow-[#1a2f28]/20 active:scale-[0.98]">
-                        Se Connecter
+                    {/* Submit Button */}
+                    <button 
+                        type="submit"
+                        disabled={isPending}
+                        className="w-full bg-[#1a2f28] text-white font-bold py-3.5 rounded-xl hover:bg-[#254239] transition-all shadow-md shadow-[#1a2f28]/20 active:scale-[0.98] disabled:opacity-70"
+                    >
+                        {isPending ? "Connexion..." : "Se Connecter"}
                     </button>
                 </form>
 
@@ -98,7 +108,6 @@ export default function LoginPage() {
                 </div>
             </div>
 
-            {/* Footer Links */}
             <p className="mt-8 text-sm text-gray-500">
                 Pas encore de compte ? <a href="/register" className="text-[#1a2f28] font-bold hover:underline">Créer un compte</a>
             </p>

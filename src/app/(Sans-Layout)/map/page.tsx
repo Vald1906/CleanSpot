@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import dynamic from 'next/dynamic';
-import NavBar from "@/app/components/navbar";
 import { getSpotsFromDb, createSpot, updateSpot, deleteSpot, toggleParticipation, toggleFavorite, getComments, addComment, getParticipations } from "@/app/actions/spotActions";
 import SpotFormModal from "@/app/components/SpotFormModal";
 
@@ -206,10 +205,6 @@ export default function MapPage() {
 
     return (
         <div className="flex flex-col h-screen w-full bg-[#F8FAFC] overflow-hidden font-sans">
-            {/* NavBar toujours au-dessus */}
-            <div className="relative z-[60] flex-shrink-0">
-                <NavBar />
-            </div>
 
             {/* Conteneur carte + overlays */}
             <div className="relative flex-1 overflow-hidden">

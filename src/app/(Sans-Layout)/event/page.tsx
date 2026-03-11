@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef } from 'react';
-import NavBar from "@/app/components/navbar";
 import { getSpotsFromDb, createSpot, toggleParticipation, toggleFavorite, getParticipations, getComments, addComment } from "@/app/actions/spotActions";
 import SpotFormModal from "@/app/components/SpotFormModal";
 
@@ -380,7 +379,7 @@ export default function EventPage() {
 
     return (
         <div className="bg-[#f4f6f5] text-foreground min-h-screen">
-            <NavBar />
+           
             <main className="max-w-[1400px] mx-auto px-4 md:px-8 py-6 md:py-10 flex flex-col lg:flex-row gap-8">
                 {/* Sidebar - Filtres */}
                 <aside className="w-full lg:w-80 flex-shrink-0 lg:sticky lg:top-6 lg:self-start space-y-5">

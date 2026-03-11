@@ -8,6 +8,13 @@
       "when": 1771966643189,
       "tag": "0000_cheerful_ghost_rider",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1772532216729,
+      "tag": "0001_stiff_jasper_sitwell",
+      "breakpoints": true
     }
   ]
 }

@@ -1,7 +1,7 @@
-import { mysqlTable, varchar, json, datetime, int, text, double, mysqlEnum, date, longtext } from "drizzle-orm/mysql-core";
+﻿import { mysqlTable, varchar, json, datetime, int, text, double, mysqlEnum, date, longtext } from "drizzle-orm/mysql-core";
 import { sql } from "drizzle-orm";
 
-export const users = mysqlTable("user", {
+export const user = mysqlTable("user", {
     id: int("id").primaryKey().autoincrement(),
     email: varchar("email", { length: 180 }).notNull().unique(),
     roles: json("roles").notNull(),
