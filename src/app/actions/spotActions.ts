@@ -1,8 +1,7 @@
 "use server";
 import { db } from "@/db/drizzle";
-// AJOUT de archived_spots dans l'import ci-dessous
 import { spots, archived_spots, comments, participations, favorites } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 // ---------- READ ----------
@@ -24,6 +23,35 @@ export async function getArchivedSpotsFromDb() {
     } catch (error) {
         console.error("Erreur DB Archived:", error);
         return { success: false, data: [] };
+    }
+}
+
+// ========== ARCHIVAGE ==========
+
+export async function archiveSpot(id: number) {
+    try {
+        const spotToArchive = await db.select()
+            .from(spots)
+            .where(eq(spots.id, id))
+            .then(rows => rows[0]);
+
+        if (!spotToArchive) {
+            return { success: false, error: "Spot introuvable" };
+        }
+
+        await db.insert(archived_spots).values({
+            ...spotToArchive,
+        });
+
+        await db.delete(spots).where(eq(spots.id, id));
+
+        revalidatePath("/event");
+        revalidatePath("/map");
+
+        return { success: true };
+    } catch (error) {
+        console.error("Erreur lors de l'archivage du spot:", error);
+        return { success: false, error: String(error) };
     }
 }
 
@@ -269,3 +297,5 @@ export async function getUserProfileData(userName: string) {
         return { success: false, error: String(error) };
     }
 }
+
+

@@ -89,7 +89,7 @@ const MapContent = memo(({ onSelectSpot, selectedSpot, dbSpots, zoomLevel, setZo
                         position={[spot.latitude, spot.longitude]}
                         icon={createCustomIcon(visuals.icon, visuals.color, isActive)}
                         eventHandlers={{
-                            click: (e) => {
+                            click: (e: L.LeafletMouseEvent) => {
                                 L.DomEvent.stopPropagation(e);
                                 onSelectSpot({
                                     ...spot,
