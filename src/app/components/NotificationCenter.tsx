@@ -3,9 +3,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getNotifications, markNotificationAsRead } from '@/app/actions/notificationActions';
 import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
 
 export default function NotificationCenter() {
     const { data: session } = useSession();
+    const router = useRouter();
     const [notifications, setNotifications] = useState<any[]>([]);
     const [isOpen, setIsOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -76,10 +78,20 @@ export default function NotificationCenter() {
                                 <p className="text-sm">Aucune notification</p>
                             </div>
                         ) : (
-                            notifications.map((n) => (
+                            notifications.map((n) => {
+                                const isReply = n.title.startsWith('Réponse du support');
+                                return (
                                 <div 
                                     key={n.id} 
-                                    onClick={() => handleMarkAsRead(n.id)}
+                                    onClick={() => {
+                                        handleMarkAsRead(n.id);
+                                        if (isReply) {
+                                            setIsOpen(false);
+                                            // Extract subject without "Réponse du support : "
+                                            const originalSubject = n.title.replace('Réponse du support :', '').trim();
+                                            router.push(`/contact?replyTo=${encodeURIComponent(originalSubject)}`);
+                                        }
+                                    }}
                                     className={`p-4 border-b border-white/5 hover:bg-white/5 transition-colors cursor-pointer relative ${!n.isRead ? 'bg-emerald-400/5' : ''}`}
                                 >
                                     {!n.isRead && <div className="absolute left-0 top-0 bottom-0 w-1 bg-emerald-400" />}
@@ -93,8 +105,15 @@ export default function NotificationCenter() {
                                             Suggestion
                                         </span>
                                     )}
+                                    {isReply && (
+                                        <div className="mt-3 flex items-center gap-1.5 text-[10px] font-bold text-sky-400 bg-sky-500/10 hover:bg-sky-500/20 px-3 py-1.5 rounded-lg w-fit transition-colors">
+                                            <span className="material-icons-outlined text-[12px]">reply</span>
+                                            Cliquez ici pour répondre
+                                        </div>
+                                    )}
                                 </div>
-                            ))
+                                );
+                            })
                         )}
                     </div>
                 </div>

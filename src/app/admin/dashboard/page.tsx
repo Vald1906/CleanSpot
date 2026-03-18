@@ -100,6 +100,21 @@ export default function AdminDashboard() {
                             <span className="material-icons-outlined ml-2 text-sm group-hover:translate-x-1 transition-transform">arrow_forward</span>
                         </div>
                     </a>
+
+                    {/* Carte Messages de Contact */}
+                    <a href="/admin/contacts" className="group bg-white rounded-3xl p-8 shadow-sm border border-slate-100 hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
+                        <div className="w-14 h-14 bg-fuchsia-50 text-fuchsia-600 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-fuchsia-600 group-hover:text-white transition-colors">
+                            <span className="material-icons-outlined text-3xl">mail</span>
+                        </div>
+                        <h2 className="text-xl font-bold text-slate-800 mb-2">Messages de Contact</h2>
+                        <p className="text-slate-500 text-sm leading-relaxed mb-6">
+                            Consultez, lisez et gérez les messages envoyés depuis la page de contact publique.
+                        </p>
+                        <div className="flex items-center text-fuchsia-600 font-bold text-sm">
+                            Gérer les messages
+                            <span className="material-icons-outlined ml-2 text-sm group-hover:translate-x-1 transition-transform">arrow_forward</span>
+                        </div>
+                    </a>
                 </div>
             </div>
         </div>

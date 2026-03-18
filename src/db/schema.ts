@@ -157,3 +157,14 @@ export const associations = mysqlTable("associations", {
 //END //
 
 //DELIMITER ;
+
+// ---------- CONTACT ----------
+export const contact = mysqlTable("contact", {
+    id: int("id").primaryKey().autoincrement(),
+    userId: int("user_id").references(() => user.id, { onDelete: 'cascade' }),
+    email: varchar("email", { length: 255 }).notNull(),
+    nom: varchar("nom", { length: 255 }).notNull(),
+    subject: varchar("subject", { length: 255 }).notNull(),
+    message: longtext("message").notNull(),
+    createdAt: datetime("created_at").default(sql`CURRENT_TIMESTAMP`),
+});

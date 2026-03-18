@@ -6,7 +6,7 @@ import { useSession, signOut } from "next-auth/react"; // Import NextAuth
 import NotificationCenter from "./NotificationCenter";
 
 export default function NavBar() {
-    const { data: session } = useSession(); // Récupère la session NextAuth
+    const { data: session, status } = useSession(); // Récupère la session et son statut
     const user = session?.user; // L'utilisateur connecté
 
     const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
@@ -22,6 +22,7 @@ export default function NavBar() {
         { name: "Fil d'actualité", href: "/dashboard" },
         { name: "Carte", href: "/map" },
         { name: "Événements", href: "/event" },
+        { name: "Contact", href: "/contact" },
     ];
 
     // Ajouter le lien admin si c'est un admin
@@ -63,7 +64,12 @@ export default function NavBar() {
 
                 {/* Droite : Auth ou Profil */}
                 <div className="flex items-center gap-4">
-                    {!user ? (
+                    {status === "loading" ? (
+                        <div className="hidden lg:flex items-center gap-4">
+                            <div className="w-20 h-5 bg-white/10 rounded-md animate-pulse"></div>
+                            <div className="w-24 h-9 bg-white/10 rounded-lg animate-pulse"></div>
+                        </div>
+                    ) : !user ? (
                         <div className="hidden lg:flex items-center gap-4">
                             <a href="/login" className="text-sm font-medium text-white/80 hover:text-white">Se connecter</a>
                             <a href="/register" className="text-sm font-medium bg-white/20 px-5 py-2 rounded-lg hover:bg-white/30 transition-all">S'inscrire</a>

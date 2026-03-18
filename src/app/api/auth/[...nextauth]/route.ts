@@ -6,8 +6,27 @@ import { db } from "@/db/drizzle";
 import { banned_users } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
+const useSecureCookies = process.env.NODE_ENV === "production";
+
 export const authOptions: NextAuthOptions = {
     secret: process.env.NEXTAUTH_SECRET || "fallback-secret-for-dev",
+    session: {
+        strategy: "jwt",
+        maxAge: 12 * 60 * 60, // Expiration de secours à 12h
+    },
+    cookies: {
+        sessionToken: {
+            name: useSecureCookies ? "__Secure-next-auth.session-token" : "next-auth.session-token",
+            options: {
+                httpOnly: true,
+                sameSite: "lax",
+                path: "/",
+                secure: useSecureCookies,
+                // L'absence de 'maxAge' transforme ceci en un "Session Cookie"
+                // Il sera automatiquement supprimé à la fermeture complète du navigateur
+            },
+        },
+    },
     providers: [
         CredentialsProvider({
             name: "Connexion",
