@@ -1,10 +1,17 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, useMemo } from "react";
 import dynamic from "next/dynamic";
-import NavBar from "@/app/components/navbar";
-import { getSpotsFromDb, getArchivedSpotsFromDb, getComments, addComment, toggleParticipation } from "@/app/actions/spotActions";
+import { useSession } from "next-auth/react";
+import {
+  getSpotsFromDb,
+  getArchivedSpotsFromDb,
+  getComments,
+  addComment,
+  toggleParticipation,
+  archiveSpot,
+  toggleFavorite
+} from "@/app/actions/spotActions";
 
 const MapComponent = dynamic(
   () => import("@/app/components/MapComponent"),
@@ -19,251 +26,425 @@ const MapComponent = dynamic(
 );
 
 export default function MaPage() {
+  const { data: session, status } = useSession();
+
+  // AJOUTEZ CECI POUR TESTER :
+  console.log("Statut session :", status);
+  console.log("Données session :", session);
+
   const [dbSpots, setDbSpots] = useState<any[]>([]);
   const [selectedSpot, setSelectedSpot] = useState<any>(null);
   const [newsItems, setNewsItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const router = useRouter();
-
-  // AJOUT : État pour le filtre
   const [activeFilter, setActiveFilter] = useState<"Event" | "Signalement">("Event");
 
-  const [expandedCommentsId, setExpandedCommentsId] = useState<number | null>(null);
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "archived">("all");
+  const [searchQuery, setSearchQuery] = useState("");
+
   const [commentsMap, setCommentsMap] = useState<Record<number, any[]>>({});
   const [commentInputs, setCommentInputs] = useState<Record<number, string>>({});
-  const [loadingCommentsFor, setLoadingCommentsFor] = useState<number | null>(null);
-  const [shareStatus, setShareStatus] = useState<Record<number, "success" | "error">>({});
   const [participatingStatus, setParticipatingStatus] = useState<Record<number, boolean>>({});
+  const [userFavorites, setUserFavorites] = useState<Record<number, boolean>>({});
+  const [isPanelOpen, setIsPanelOpen] = useState(false);
 
-  useEffect(() => {
-    async function loadData() {
-      setLoading(true);
-
+  const loadData = async () => {
+    setLoading(true);
+    try {
       const [resSpots, resArchived] = await Promise.all([
-        getSpotsFromDb() as any,
-        getArchivedSpotsFromDb() as any
+        getSpotsFromDb(),
+        getArchivedSpotsFromDb()
       ]);
 
-      let allEvents: any[] = [];
       let allSpotsForMap: any[] = [];
+      let combinedNews: any[] = [];
 
-      if (resSpots.success) {
+      if (resSpots.success && resSpots.data) {
         allSpotsForMap = [...resSpots.data];
-        // MODIFICATION : On inclut les Signalements dans newsItems
         const activeItems = resSpots.data
           .filter((s: any) => s.type === "Event" || s.type === "Signalement")
           .map((e: any) => ({ ...e, isArchived: false }));
-        allEvents = [...activeItems];
+        combinedNews = [...activeItems];
       }
 
-      if (resArchived.success) {
+      if (resArchived.success && resArchived.data) {
         allSpotsForMap = [...allSpotsForMap, ...resArchived.data];
         const archivedItems = resArchived.data
           .filter((s: any) => s.type === "Event" || s.type === "Signalement")
           .map((e: any) => ({ ...e, isArchived: true }));
-        allEvents = [...allEvents, ...archivedItems];
+        combinedNews = [...combinedNews, ...archivedItems];
       }
 
-      allEvents.sort((a, b) => new Date(b.date || b.createdAt).getTime() - new Date(a.date || a.createdAt).getTime());
+      combinedNews.sort((a, b) => {
+        const dateB = new Date(b.date || b.created_at || Date.now()).getTime();
+        const dateA = new Date(a.date || a.created_at || Date.now()).getTime();
+        return dateB - dateA;
+      });
 
       setDbSpots(allSpotsForMap);
-      setNewsItems(allEvents);
+      setNewsItems(combinedNews);
+
+      // --- LOGIQUE DE SYNCHRONISATION CORRIGÉE ---
+      if (session?.user?.id) {
+        const newParticipationMap: Record<number, boolean> = {};
+        const newFavoritesMap: Record<number, boolean> = {};
+
+        // Format unifié : "id - nom" (même que la page Event)
+        const userIdentifier = `${session.user.id} - ${session.user.name}`;
+
+        allSpotsForMap.forEach((spot) => {
+          // Participations
+          if (Array.isArray(spot.participants) && spot.participants.includes(userIdentifier)) {
+            newParticipationMap[spot.id] = true;
+          }
+          // Favoris
+          if (Array.isArray(spot.favorites) && spot.favorites.includes(userIdentifier)) {
+            newFavoritesMap[spot.id] = true;
+          }
+        });
+
+        console.log("Mise à jour participations :", newParticipationMap);
+        setParticipatingStatus(newParticipationMap);
+        setUserFavorites(newFavoritesMap);
+      }
+      // -------------------------------------------
+
+    } catch (err) {
+      console.error("Erreur chargement Dashboard:", err);
+    } finally {
       setLoading(false);
     }
-    loadData();
-  }, []);
-
-  const handleEventClick = (item: any) => {
-    if (item.latitude && item.longitude) {
-      setSelectedSpot({
-        ...item,
-        _clickTimestamp: Date.now()
-      });
-    }
   };
 
-  const handleShare = async (item: any) => {
-    if (typeof window === "undefined") return;
-    const baseUrl = window.location.origin;
-    const url = `${baseUrl}/event?spotId=${item.id}`;
-    const text = `${item.title ?? "Événement"} - ${item.description ?? ""}`;
+  // On recharge quand la session est prête pour bien calculer ParticipatingStatus
+  useEffect(() => {
+    if (status !== "loading") {
+      loadData();
+    }
+  }, [session, status]);
 
-    try {
-      if (navigator.share) {
-        await navigator.share({ title: item.title ?? "Événement CleanSpot", text, url });
-        setShareStatus((prev) => ({ ...prev, [item.id]: "success" }));
-        return;
+  const filteredItems = useMemo(() => {
+    return newsItems.filter(item => {
+      if (item.type !== activeFilter) return false;
+      if (statusFilter === "active" && item.isArchived) return false;
+      if (statusFilter === "archived" && !item.isArchived) return false;
+      if (item.isArchived) {
+        const DEUX_JOURS_MS = 2 * 24 * 60 * 60 * 1000;
+        const dateArchive = new Date(item.created_at || Date.now()).getTime();
+        if ((Date.now() - dateArchive) >= DEUX_JOURS_MS) return false;
       }
-    } catch { }
+      const content = `${item.title} ${item.description}`.toLowerCase();
+      if (searchQuery && !content.includes(searchQuery.toLowerCase())) return false;
+      return true;
+    });
+  }, [newsItems, activeFilter, statusFilter, searchQuery]);
 
-    try {
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(url);
-        setShareStatus((prev) => ({ ...prev, [item.id]: "success" }));
-        return;
-      }
-    } catch { }
-    setShareStatus((prev) => ({ ...prev, [item.id]: "error" }));
+  const handleEventClick = async (item: any) => {
+    setSelectedSpot({ ...item, _clickTimestamp: Date.now() });
+    setIsPanelOpen(true);
+    const res = await getComments(item.id);
+    if (res.success) setCommentsMap((prev) => ({ ...prev, [item.id]: res.data }));
   };
 
-  const handleToggleComments = async (spotId: number) => {
-    if (expandedCommentsId === spotId) {
-      setExpandedCommentsId(null);
-      return;
+  const handleFavorite = async (spotId: number) => {
+    if (!session?.user?.id) return;
+
+    const userIdentifier = `${session.user.id} - ${session.user.name}`;
+    const res = await toggleFavorite(spotId, userIdentifier);
+
+    if (res.success) {
+      setUserFavorites(prev => ({ ...prev, [spotId]: res.favorited ?? false }));
     }
-    setExpandedCommentsId(spotId);
-    setLoadingCommentsFor(spotId);
-    const res = await getComments(spotId);
-    if (res.success) setCommentsMap((prev) => ({ ...prev, [spotId]: res.data }));
-    setLoadingCommentsFor(null);
   };
 
   const handleAddComment = async (spotId: number) => {
-    const value = (commentInputs[spotId] ?? "").trim();
-    if (!value) return;
-    const res = await addComment(spotId, "Anonyme", value);
+    const messageText = commentInputs[spotId];
+
+    if (!session?.user || !messageText?.trim()) return;
+
+    try {
+      const fullAuthor = `${session.user.id} - ${session.user.name}`;
+
+      const result = await addComment({
+        spotId: spotId,
+        author: fullAuthor,
+        content: messageText
+      });
+
+      if (result.success) {
+        setCommentInputs(prev => ({ ...prev, [spotId]: "" }));
+        const resComments = await getComments(spotId);
+        if (resComments.success) {
+          setCommentsMap((prev) => ({ ...prev, [spotId]: resComments.data }));
+        }
+        await loadData();
+      } else {
+        alert("Erreur : " + result.error);
+      }
+    } catch (error) {
+      console.error("Erreur client :", error);
+    }
+  };
+
+  const handleParticipate = async (spotId: number) => {
+    if (!session) {
+      alert("Vous devez être connecté pour participer.");
+      return;
+    }
+
+    // On vérifie la limite de 5 pour les Signalements
+    // Note: On utilise participatingStatus pour savoir si l'utilisateur veut s'ajouter
+    const currentCount = selectedSpot?.participants_count || 0;
+    if (!participatingStatus[spotId] && selectedSpot?.type === "Signalement" && currentCount >= 5) {
+      alert("Limite de 5 participants atteinte pour ce signalement.");
+      return;
+    }
+
+    const userIdentifier = `${session.user.id} - ${session.user.name}`;
+
+    try {
+      const res = await toggleParticipation(spotId, userIdentifier);
+
+      if (res.success) {
+        // 1. On recharge TOUTES les données (spots + participations) depuis le serveur
+        // Cela va mettre à jour dbSpots et participatingStatus proprement
+        await loadData();
+
+        // 2. On met à jour le spot sélectionné pour que le panneau latéral change immédiatement
+        // On cherche le spot mis à jour dans la nouvelle liste
+        const isNowParticipating = res.participating ?? false;
+
+        if (selectedSpot && selectedSpot.id === spotId) {
+          setSelectedSpot((prev: any) => ({
+            ...prev,
+            participants_count: isNowParticipating
+              ? (prev.participants_count || 0) + 1
+              : Math.max(0, (prev.participants_count || 0) - 1),
+            // On met aussi à jour la liste interne pour la cohérence
+            participants: isNowParticipating
+              ? [...(prev.participants || []), userIdentifier]
+              : (prev.participants || []).filter((p: string) => p !== userIdentifier)
+          }));
+        }
+      }
+    } catch (error) {
+      console.error("Erreur lors de la participation:", error);
+    }
+  };
+
+  const handleArchive = async (spotId: number) => {
+    if (!confirm("Voulez-vous marquer ce signalement comme terminé ? Il sera déplacé dans les archives.")) return;
+    const res = await archiveSpot(spotId);
     if (res.success) {
-      setCommentInputs((prev) => ({ ...prev, [spotId]: "" }));
-      const refreshed = await getComments(spotId);
-      if (refreshed.success) setCommentsMap((prev) => ({ ...prev, [spotId]: refreshed.data }));
+      setIsPanelOpen(false);
+      setSelectedSpot(null);
+      await loadData();
+    } else {
+      alert("Erreur lors de l'archivage : " + res.error);
     }
   };
 
   const formatDate = (dateValue: any) => {
-    if (!dateValue) return "Non définie";
-    return new Date(dateValue).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
-  };
-
-  const handleParticipate = async (spotId: number) => {
-    const res = await toggleParticipation(spotId, "Anonyme");
-    if (res.success) {
-      setParticipatingStatus((prev) => ({ ...prev, [spotId]: res.participating ?? false }));
-    }
+    if (!dateValue) return "Date inconnue";
+    const dateString = typeof dateValue === 'string' ? dateValue.replace(' ', 'T') : dateValue;
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return "Format date invalide";
+    return date.toLocaleDateString("fr-FR", { day: 'numeric', month: 'long', year: 'numeric' });
   };
 
   return (
-    <div className="min-h-screen bg-white font-sans">
-      <NavBar />
+    <div className="min-h-screen bg-white font-sans relative">
+
+      <div className={`fixed top-0 left-0 h-full z-[200] bg-white border-r border-zinc-200 shadow-2xl transition-transform duration-300 ease-in-out w-full sm:w-[450px] ${isPanelOpen ? "translate-x-0" : "-translate-x-full"}`}>
+        {selectedSpot && (
+          <div className="h-full flex flex-col p-0 overflow-y-auto">
+            <div className="sticky top-0 z-10 flex items-center justify-between bg-white/80 backdrop-blur-md p-4 border-b border-zinc-100">
+              <h3 className="font-bold text-zinc-800 truncate pr-4">Détails</h3>
+              <button onClick={() => setIsPanelOpen(false)} className="p-2 hover:bg-zinc-100 rounded-full text-zinc-500 transition-colors border border-zinc-100 shadow-sm">✕</button>
+            </div>
+            <div className="p-6">
+              <img src={selectedSpot.image || "https://images.unsplash.com/photo-1595273670150-db0a3bf4424e?q=80&w=400"} className="w-full aspect-video object-cover rounded-xl shadow-sm mb-4" />
+
+              <div className="flex items-center gap-2 mb-3">
+                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase text-white ${selectedSpot.type === 'Event' ? 'bg-emerald-500' : 'bg-rose-500'}`}>{selectedSpot.type}</span>
+                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase text-white ${selectedSpot.isArchived ? "bg-zinc-400" : "bg-amber-500"}`}>{selectedSpot.isArchived ? "Terminé" : "En cours"}</span>
+              </div>
+
+              <div className="flex items-start justify-between gap-4 mb-6">
+                <h2 className="text-2xl font-bold text-zinc-800 leading-tight flex-1">{selectedSpot.title}</h2>
+                <button
+                  onClick={() => handleFavorite(selectedSpot.id)}
+                  className={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-all ${userFavorites[selectedSpot.id]
+                      ? "bg-yellow-400 text-white shadow-inner"
+                      : "bg-zinc-100 text-zinc-400 hover:bg-yellow-50 hover:text-yellow-500"
+                    }`}
+                >
+                  <span className="material-icons-outlined text-xl">
+                    {userFavorites[selectedSpot.id] ? "star" : "star_border"}
+                  </span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 mb-8 p-4 bg-zinc-50 rounded-2xl border border-zinc-100 shadow-sm">
+                <div className="flex flex-col border-r border-zinc-200 pr-2">
+                  {selectedSpot.type === "Event" ? (
+                    <>
+                      <span className="text-[10px] uppercase text-zinc-400 font-black tracking-widest mb-1 flex items-center gap-1">📅 Date & Heure</span>
+                      <div className="text-sm font-semibold text-zinc-700 leading-tight">
+                        {formatDate(selectedSpot.date)}
+                        {selectedSpot.hours && <span className="block text-teal-600 font-bold mt-1 text-base">à {selectedSpot.hours}</span>}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-[10px] uppercase text-zinc-400 font-black tracking-widest mb-1 flex items-center gap-1">⚠️ Niveau d'Urgence</span>
+                      <div className="mt-1">
+                        <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${selectedSpot.urgency === 'Haute' ? 'bg-rose-100 text-rose-600' : selectedSpot.urgency === 'Moyenne' ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'}`}>
+                          {selectedSpot.urgency || "Non spécifiée"}
+                        </span>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                <div className="flex flex-col pl-2">
+                  <span className="text-[10px] uppercase text-zinc-400 font-black tracking-widest mb-1 flex items-center gap-1">👥 Participants</span>
+                  <div className="text-sm font-semibold text-zinc-700">
+                    <span className="text-2xl text-zinc-900 block leading-none mb-1">{selectedSpot.participants_count || 0}</span>
+                    <span className="text-[11px] text-zinc-500 uppercase">
+                      {selectedSpot.type === "Signalement" ? "5 personnes maximum" : `sur ${selectedSpot.max_participants || "∞"} places`}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <p className="text-zinc-600 text-sm mb-8 leading-relaxed px-1 font-medium">{selectedSpot.description}</p>
+
+              {!selectedSpot.isArchived && (
+                <div className="space-y-3 mb-10">
+                  <button
+                    className={`w-full py-3.5 rounded-xl font-bold transition-all transform active:scale-95 ${participatingStatus[selectedSpot.id] ? "bg-zinc-100 text-zinc-500 border border-zinc-200" : "bg-teal-500 text-white shadow-lg shadow-teal-500/20 hover:bg-teal-600"}`}
+                    onClick={() => handleParticipate(selectedSpot.id)}
+                  >
+                    {participatingStatus[selectedSpot.id] ? "✓ Vous participez" : (selectedSpot.type === "Signalement" ? "Aider à résoudre" : "Réserver ma place")}
+                  </button>
+                  {selectedSpot.type === "Signalement" && participatingStatus[selectedSpot.id] && (
+                    <button onClick={() => handleArchive(selectedSpot.id)} className="w-full py-3 rounded-xl font-bold bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-600 hover:text-white transition-all">
+                      Marquer comme terminé
+                    </button>
+                  )}
+                </div>
+              )}
+
+              <div className="border-t pt-6 pb-10">
+                <h4 className="font-bold text-zinc-800 mb-4 text-xs uppercase tracking-widest">Discussion</h4>
+                <div className="space-y-3 mb-6">
+                  {commentsMap[selectedSpot.id]?.map((c: any) => {
+                    const authorParts = c.author ? c.author.split(" - ") : [];
+                    const displayName = authorParts.length > 1 ? authorParts[1] : c.author;
+                    return (
+                      <div key={c.id} className="bg-zinc-50 p-3 rounded-lg border border-zinc-100 text-xs relative group">
+                        <div className="flex justify-between items-start mb-1">
+                          <p className="font-black text-teal-600">{displayName}</p>
+                          <button 
+                            onClick={async () => {
+                              if(confirm("Voulez-vous vraiment signaler ce commentaire comme inapproprié ?")) {
+                                const { reportComment } = await import("@/app/actions/adminCommentActions");
+                                const res = await reportComment(c.id);
+                                if (res.success) {
+                                  alert("Commentaire signalé à la modération.");
+                                }
+                              }
+                            }}
+                            className="text-zinc-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                            title="Signaler ce commentaire"
+                          >
+                            <span className="material-icons-outlined text-sm">flag</span>
+                          </button>
+                        </div>
+                        <p className="text-zinc-600 pr-6">{c.content}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={commentInputs[selectedSpot.id] || ""}
+                    onChange={(e) => setCommentInputs(prev => ({ ...prev, [selectedSpot.id]: e.target.value }))}
+                    placeholder="Votre message..."
+                    className="flex-1 rounded-full border border-zinc-200 px-4 py-2 text-xs outline-none focus:border-teal-500 transition-colors"
+                  />
+                  <button onClick={() => handleAddComment(selectedSpot.id)} className="bg-zinc-800 text-white p-2.5 rounded-full hover:bg-teal-600 transition-colors">➤</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           <section className="lg:col-span-2">
-
-            {/* MODIFICATION : Titre + Boutons de filtre */}
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-zinc-800">Fil d&apos;actualité</h2>
-              <div className="inline-flex rounded-lg bg-zinc-100 p-1">
-                <button
-                  onClick={() => setActiveFilter("Event")}
-                  className={`rounded-md px-3 py-1 text-sm font-medium transition-colors ${activeFilter === "Event" ? "bg-white text-zinc-800 shadow-sm" : "text-zinc-500"}`}
-                >
-                  Événements
-                </button>
-                <button
-                  onClick={() => setActiveFilter("Signalement")}
-                  className={`rounded-md px-3 py-1 text-sm font-medium transition-colors ${activeFilter === "Signalement" ? "bg-white text-zinc-800 shadow-sm" : "text-zinc-500"}`}
-                >
-                  Signalements
-                </button>
+            <div className="mb-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-semibold text-zinc-800">Fil d'actualité</h2>
+                <div className="inline-flex rounded-lg bg-zinc-100 p-1">
+                  {(["Event", "Signalement"] as const).map((type) => (
+                    <button key={type} onClick={() => setActiveFilter(type)} className={`rounded-md px-3 py-1 text-sm font-medium ${activeFilter === type ? "bg-white text-zinc-800 shadow-sm" : "text-zinc-500"}`}>
+                      {type === "Event" ? "Événements" : "Signalements"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="relative flex-1">
+                  <input
+                    type="text"
+                    placeholder="Rechercher..."
+                    className="w-full pl-4 pr-4 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-sm outline-none focus:border-teal-500 transition-all"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                </div>
+                <div className="flex bg-zinc-100 rounded-xl p-1">
+                  {[{ id: "all", label: "Tous" }, { id: "active", label: "En cours" }, { id: "archived", label: "Terminés" }].map((s) => (
+                    <button key={s.id} onClick={() => setStatusFilter(s.id as any)} className={`px-3 py-1 text-xs font-medium rounded-lg transition-all ${statusFilter === s.id ? "bg-white text-teal-600 shadow-sm" : "text-zinc-500"}`}>
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 
             {loading ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="h-8 w-8 animate-spin rounded-full border-4 border-zinc-200 border-t-teal-500"></div>
-              </div>
+              <div className="flex justify-center py-12 animate-spin text-teal-500 text-xl">⏳</div>
             ) : (
               <div className="grid gap-4 sm:grid-cols-2">
-                {newsItems.filter(i => i.type === activeFilter).length > 0 ? (
-                  newsItems.filter(i => i.type === activeFilter).map((item) => (
-                    <article
-                      key={item.id}
-                      onClick={() => handleEventClick(item)}
-                      className={`overflow-hidden rounded-xl border transition-all cursor-pointer hover:shadow-md hover:scale-[1.01] ${selectedSpot?.id === item.id ? "border-teal-500 ring-2 ring-teal-500/20" : "border-zinc-200"} bg-white shadow-sm`}
-                    >
-                      <div className="relative aspect-[5/3] overflow-hidden">
-                        <img
-                          src={item.image || "https://images.unsplash.com/photo-1595273670150-db0a3bf4424e?q=80&w=400&h=240&auto=format&fit=crop"}
-                          alt=""
-                          className="h-full w-full object-cover"
-                        />
-                        <span className={`absolute left-3 top-3 flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-white ${item.isArchived ? "bg-emerald-500" : "bg-amber-500"}`}>
-                          <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 20 20">
-                            {item.isArchived ? (
-                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                            ) : (
-                              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 012 0v3a1 1 0 11-2 0V5z" clipRule="evenodd" />
-                            )}
-                          </svg>
-                          {item.isArchived ? "Terminé" : "En cours"}
-                        </span>
-                      </div>
-                      <div className="p-4">
-                        <h3 className="font-semibold text-zinc-800">{item.title}</h3>
-                        <p className="mt-1 line-clamp-2 text-sm text-zinc-600">{item.description}</p>
-                        <div className="mt-2 flex flex-col gap-1 text-xs text-zinc-500">
-                          <div className="flex items-center gap-1.5"><span className="font-medium text-zinc-700">Date :</span> {formatDate(item.date || item.createdAt)}</div>
-                        </div>
-                        <div className="mt-4 flex flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                          <button type="button" className="inline-flex items-center gap-1.5 rounded-lg border border-teal-400 px-3 py-1.5 text-sm font-medium text-teal-600 transition-colors hover:bg-teal-50" onClick={() => handleToggleComments(item.id)}>
-                            Commenter
-                          </button>
-                          {item.type === "Event" && !item.isArchived && (
-                            <button type="button" className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${participatingStatus[item.id] ? "bg-zinc-100 text-zinc-600 hover:bg-zinc-200" : "bg-teal-500 text-white hover:bg-teal-600"}`} onClick={() => handleParticipate(item.id)}>
-                              {participatingStatus[item.id] ? "Inscrit" : "Participer"}
-                            </button>
-                          )}
-                        </div>
-
-                        {expandedCommentsId === item.id && (
-                          <div className="mt-3 space-y-3 border-t border-zinc-200 pt-3" onClick={(e) => e.stopPropagation()}>
-                            {commentsMap[item.id]?.map((c: any) => (
-                              <div key={c.id} className="text-xs text-zinc-600"><span className="font-semibold text-zinc-800">{c.author} :</span> {c.content}</div>
-                            ))}
-                            <div className="flex gap-2">
-                              <input type="text" placeholder="Écrire..." value={commentInputs[item.id] ?? ""} onChange={(e) => setCommentInputs(prev => ({ ...prev, [item.id]: e.target.value }))} className="flex-1 rounded-lg border px-3 py-1 text-xs outline-none" />
-                              <button onClick={() => handleAddComment(item.id)} className="rounded-lg bg-teal-500 px-3 py-1 text-xs text-white">Envoyer</button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </article>
-                  ))
-                ) : (
-                  <p className="col-span-2 py-8 text-center text-zinc-500 italic">Aucun élément disponible.</p>
-                )}
+                {filteredItems.map((item) => (
+                  <article key={item.id} onClick={() => handleEventClick(item)} className={`overflow-hidden rounded-xl border transition-all cursor-pointer bg-white shadow-sm ${selectedSpot?.id === item.id ? "border-teal-500 ring-2 ring-teal-500/20" : "border-zinc-200 hover:border-zinc-300"}`}>
+                    <div className="relative aspect-[5/3]">
+                      <img src={item.image || "https://images.unsplash.com/photo-1595273670150-db0a3bf4424e?q=80&w=400"} className="h-full w-full object-cover" />
+                      <span className={`absolute left-3 top-3 rounded px-2 py-1 text-[10px] font-bold uppercase text-white ${item.isArchived ? "bg-zinc-400" : "bg-amber-500"}`}>{item.isArchived ? "Terminé" : "En cours"}</span>
+                    </div>
+                    <div className="p-4">
+                      <h3 className="font-semibold text-zinc-800">{item.title}</h3>
+                      <p className="mt-1 line-clamp-2 text-sm text-zinc-600">{item.description}</p>
+                    </div>
+                  </article>
+                ))}
               </div>
             )}
           </section>
 
-          <section>
-            <h2 className="mb-4 text-xl font-semibold text-zinc-800">GreenMap</h2>
-            <div className="rounded-xl border border-zinc-200 bg-zinc-50/50 p-4 shadow-sm">
-              <div className="mb-3 flex flex-wrap gap-4">
-                <span className="flex items-center gap-2 text-sm text-zinc-700"><span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white text-[10px]">🧹</span> Événement</span>
-                <span className="flex items-center gap-2 text-sm text-zinc-700"><span className="flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-white text-[10px]">🚨</span> Signalement</span>
-                <span className="flex items-center gap-2 text-sm text-zinc-700"><span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-500 text-white text-[10px]">♻️</span> Point de Tri</span>
-              </div>
-
-              {/* CORRECTION : Conteneur de la carte avec isolate et overflow-hidden */}
-              <div className="relative aspect-square max-h-[320px] w-full overflow-hidden rounded-lg bg-zinc-200/80 border border-zinc-300 isolate">
-                <MapComponent
-                  dbSpots={dbSpots}
-                  onSelectSpot={setSelectedSpot}
-                  selectedSpot={selectedSpot}
-                  isDashboard={true}
-                />
-              </div>
+          <section className="flex flex-col gap-4">
+            <h2 className="text-xl font-semibold text-zinc-800">Map</h2>
+            <div className="rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm flex flex-wrap gap-x-6 gap-y-2 text-sm text-zinc-600">
+              <div className="flex items-center gap-2"><span className="h-3 w-3 rounded-full bg-emerald-500"></span><span>Événement</span></div>
+              <div className="flex items-center gap-2"><span className="h-3 w-3 rounded-full bg-rose-500"></span><span>Signalement</span></div>
+              <div className="flex items-center gap-2"><span className="h-3 w-3 rounded-full bg-slate-500"></span><span>Point de Tri</span></div>
             </div>
-
-            <div className="mt-6">
-              <h2 className="mb-4 text-xl font-semibold text-zinc-800">Statistiques d&apos;Impact</h2>
-              <div className="flex items-center gap-4 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
-                <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=80&h=80&fit=crop&crop=face" alt="Profil" className="h-14 w-14 rounded-full object-cover" />
-                <div className="flex-1">
-                  <p className="font-semibold text-zinc-800">Score de Points: <span className="text-teal-600">345 pts</span></p>
-                  <p className="text-sm text-zinc-600">Gardien de Ville</p>
-                </div>
-              </div>
+            <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm h-[500px] relative z-0">
+              <MapComponent dbSpots={dbSpots} onSelectSpot={handleEventClick} selectedSpot={selectedSpot} isDashboard={true} />
             </div>
           </section>
         </div>

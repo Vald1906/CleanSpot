@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useSession } from 'next-auth/react';
+
 
 interface SpotFormData {
     type: 'Event' | 'Signalement';
@@ -62,6 +64,9 @@ export default function SpotFormModal({
     mode,
     pickedPosition,
 }: SpotFormModalProps) {
+
+    const { data: session } = useSession();
+
     const [form, setForm] = useState<SpotFormData>(emptyForm);
     const [loading, setLoading] = useState(false);
     const [geocoding, setGeocoding] = useState(false);
@@ -106,19 +111,23 @@ export default function SpotFormModal({
                 maxParticipants: (initialData as any).maxParticipants || 0,
             });
         } else if (mode === 'create') {
-            setForm(emptyForm);
+            const isAssoc = session?.user?.statut_pro === 'Association';
+            setForm({
+                ...emptyForm,
+                type: isAssoc ? 'Event' : 'Signalement'
+            });
         }
-    }, [mode, initialData, isOpen]);
+    }, [mode, initialData, isOpen, session?.user?.statut_pro]);
 
-    // Charger l'auteur mémorisé si on crée un nouveau spot
+    // Charger l'auteur depuis la session si connecté
     useEffect(() => {
         if (mode === 'create' && isOpen) {
-            const saved = typeof window !== 'undefined' ? localStorage.getItem('cleanspot_username') : null;
-            if (saved) {
-                setForm(prev => ({ ...prev, author: saved }));
+            if (session?.user?.name) {
+                // Si connecté, on met son nom d'utilisateur directement
+                setForm(prev => ({ ...prev, author: session.user.name as string }));
             }
         }
-    }, [mode, isOpen]);
+    }, [mode, isOpen, session?.user?.name]);
 
     // Mise à jour quand l'utilisateur clique sur la carte
     useEffect(() => {
@@ -270,25 +279,30 @@ export default function SpotFormModal({
                                 Type de spot
                             </label>
                             <div className="grid grid-cols-2 gap-2">
-                                {(['Event', 'Signalement'] as const).map((t) => (
-                                    <button
-                                        key={t}
-                                        type="button"
-                                        onClick={() => setForm((prev) => {
-                                            const newType = t;
-                                            let newMax = prev.maxParticipants;
-                                            if (newType === 'Signalement' && newMax > 5) newMax = 5;
-                                            return { ...prev, type: newType, maxParticipants: newMax };
-                                        })}
-                                        className={`flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border-2 text-xs font-bold transition-all ${form.type === t
-                                            ? 'border-[#1a2f28] bg-[#1a2f28] text-white shadow-lg'
-                                            : 'border-muted bg-white text-muted-foreground hover:border-[#33a17b]'
-                                            }`}
-                                    >
-                                        <span className="material-icons-outlined text-lg">{typeConfig[t].icon}</span>
-                                        {typeConfig[t].label}
-                                    </button>
-                                ))}
+                                {(['Event', 'Signalement'] as const).map((t) => {
+                                    // Masquer l'option Événement pour les particuliers
+                                    if (t === 'Event' && session?.user?.statut_pro !== 'Association') return null;
+                                    
+                                    return (
+                                        <button
+                                            key={t}
+                                            type="button"
+                                            onClick={() => setForm((prev) => {
+                                                const newType = t;
+                                                let newMax = prev.maxParticipants;
+                                                if (newType === 'Signalement' && newMax > 5) newMax = 5;
+                                                return { ...prev, type: newType, maxParticipants: newMax };
+                                            })}
+                                            className={`flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border-2 text-xs font-bold transition-all ${form.type === t
+                                                ? 'border-[#1a2f28] bg-[#1a2f28] text-white shadow-lg'
+                                                : 'border-muted bg-white text-muted-foreground hover:border-[#33a17b]'
+                                                }`}
+                                        >
+                                            <span className="material-icons-outlined text-lg">{typeConfig[t].icon}</span>
+                                            {typeConfig[t].label}
+                                        </button>
+                                    );
+                                })}
                             </div>
                         </div>
 
@@ -363,18 +377,19 @@ export default function SpotFormModal({
 
                         {/* Auteur */}
                         <div>
-                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2 block">
-                                Auteur
-                            </label>
+                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2 block">Auteur</label>
                             <input
                                 type="text"
                                 name="author"
                                 value={form.author}
-                                onChange={handleChange}
-                                placeholder="Votre nom ou pseudo"
+                                readOnly
+                                placeholder={session ? "Chargement..." : "Connectez-vous pour publier"}
                                 required
-                                className="w-full px-4 py-3 bg-muted/30 border border-muted rounded-xl text-sm text-[#1a2f28] placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-[#33a17b]/30 focus:border-[#33a17b] transition-all"
+                                className="w-full px-4 py-3 bg-muted/50 border border-muted rounded-xl text-sm text-[#1a2f28]/60 cursor-not-allowed outline-none"
                             />
+                            <p className="text-[10px] text-muted-foreground mt-1 italic">
+                                {session ? "Identifiant vérifié via votre compte." : "Vous devez être connecté pour créer un spot."}
+                            </p>
                         </div>
 
                         {/* Adresse avec autocomplete */}
@@ -503,7 +518,7 @@ export default function SpotFormModal({
                                         if (val < 0) val = 0;
                                         setForm(prev => ({ ...prev, maxParticipants: val }));
                                     }}
-                                    placeholder="Ex: 10 (0 pour illimité)"
+                                    placeholder={form.type === 'Signalement' ? "5 max" : "Ex: 10 (0 pour illimité)"}
                                     className="w-full pl-10 pr-4 py-3 bg-muted/30 border border-muted rounded-xl text-sm text-[#1a2f28] placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-[#33a17b]/30 focus:border-[#33a17b] transition-all"
                                 />
                             </div>
@@ -585,34 +600,50 @@ export default function SpotFormModal({
                     </form>
 
                     {/* Footer */}
-                    <div className="px-6 py-4 border-t border-muted flex items-center gap-3">
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            className="flex-1 py-3 bg-muted/50 text-[#1a2f28] text-sm font-bold rounded-xl hover:bg-muted transition-all"
-                        >
-                            Annuler
-                        </button>
-                        <button
-                            type="submit"
-                            onClick={handleSubmit}
-                            disabled={loading || !form.title || !form.author || !form.address}
-                            className="flex-1 py-3 bg-[#1a2f28] text-white text-sm font-bold rounded-xl hover:bg-[#2a453c] transition-all shadow-lg disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                        >
-                            {loading ? (
-                                <>
-                                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-                                    Enregistrement...
-                                </>
-                            ) : (
-                                <>
-                                    <span className="material-icons-outlined text-sm">
-                                        {mode === 'create' ? 'add_location' : 'save'}
-                                    </span>
-                                    {mode === 'create' ? 'Créer le spot' : 'Enregistrer'}
-                                </>
-                            )}
-                        </button>
+                    <div className="px-6 py-4 border-t border-muted flex flex-col gap-3">
+                        {(session?.user as any)?.statut_pro === 'Association' && (session?.user as any)?.is_verified === 0 && (
+                            <div className="px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3 mb-2 animate-pulse">
+                                <span className="material-icons-outlined text-amber-500 mt-0.5">warning</span>
+                                <p className="text-xs text-amber-700 font-bold">
+                                    Compte en attente de validation. La création de spots est temporairement restreinte.
+                                </p>
+                            </div>
+                        )}
+                        <div className="flex items-center gap-3 w-full">
+                            <button
+                                type="button"
+                                onClick={onClose}
+                                className="flex-1 py-3 bg-muted/50 text-[#1a2f28] text-sm font-bold rounded-xl hover:bg-muted transition-all"
+                            >
+                                Annuler
+                            </button>
+                            <button
+                                type="submit"
+                                onClick={handleSubmit}
+                                disabled={
+                                    loading || 
+                                    !form.title || 
+                                    !form.author || 
+                                    !form.address || 
+                                    ((session?.user as any)?.statut_pro === 'Association' && (session?.user as any)?.is_verified === 0)
+                                }
+                                className="flex-1 py-3 bg-[#1a2f28] text-white text-sm font-bold rounded-xl hover:bg-[#2a453c] transition-all shadow-lg disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                            >
+                                {loading ? (
+                                    <>
+                                        <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                                        Enregistrement...
+                                    </>
+                                ) : (
+                                    <>
+                                        <span className="material-icons-outlined text-sm">
+                                            {mode === 'create' ? 'add_location' : 'save'}
+                                        </span>
+                                        {mode === 'create' ? 'Créer le spot' : 'Enregistrer'}
+                                    </>
+                                )}
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>

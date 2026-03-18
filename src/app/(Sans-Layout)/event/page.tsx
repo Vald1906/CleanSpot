@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { useSession } from "next-auth/react";
 import NavBar from "@/app/components/navbar";
 import { getSpotsFromDb, createSpot, toggleParticipation, toggleFavorite, getParticipations, getFavorites, getComments, addComment } from "@/app/actions/spotActions";
 import SpotFormModal from "@/app/components/SpotFormModal";
 import { useNotification } from "@/app/context/NotificationContext";
+
 
 // Config des matières pour l'affichage
 const MATERIAL_OPTIONS = [
@@ -68,85 +70,105 @@ function EventSkeleton() {
 }
 
 export default function EventPage() {
-    const [allEvents, setAllEvents] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [showForm, setShowForm] = useState(false);
+    const { data: session } = useSession();
     const { showNotification } = useNotification();
 
-    // --- FILTRES ---
+    // --- 1. IDENTITÉ UTILISATEUR (Nettoyé) ---
+    const [userId, setUserId] = useState<number | null>(null);
+    const [userName, setUserName] = useState<string>("Utilisateur");
+    const [commentAuthor, setCommentAuthor] = useState<string>("");
+
+    // --- 2. DONNÉES ET CHARGEMENT ---
+    const [allEvents, setAllEvents] = useState<any[]>([]);
+    const [dbSpots, setDbSpots] = useState<any[]>([]); // Pour la logique de participation
+    const [loading, setLoading] = useState(true);
+    const [showForm, setShowForm] = useState(false);
+
+    // --- 3. FILTRES ---
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedMaterials, setSelectedMaterials] = useState<string[]>([]);
     const [selectedDate, setSelectedDate] = useState<string | null>(null);
     const [sortBy, setSortBy] = useState('date_asc');
     const [showSortMenu, setShowSortMenu] = useState(false);
 
-    // Distance
+    // --- 4. GÉOLOCALISATION ET DISTANCE ---
     const [distanceKm, setDistanceKm] = useState(50);
     const [distanceEnabled, setDistanceEnabled] = useState(false);
     const [userPos, setUserPos] = useState<{ lat: number; lng: number } | null>(null);
     const [geoStatus, setGeoStatus] = useState<'idle' | 'loading' | 'granted' | 'denied'>('idle');
 
-    // Calendrier
+    // --- 5. CALENDRIER ---
     const now = new Date();
     const [calYear, setCalYear] = useState(now.getFullYear());
     const [calMonth, setCalMonth] = useState(now.getMonth());
 
-    // Interactions sociales
+    // --- 6. INTERACTIONS SOCIALES ---
     const [participationCounts, setParticipationCounts] = useState<Record<number, number>>({});
     const [userParticipations, setUserParticipations] = useState<Record<number, boolean>>({});
     const [userFavorites, setUserFavorites] = useState<Record<number, boolean>>({});
 
-    // Commentaires
+    // --- 7. COMMENTAIRES ---
     const [expandedComments, setExpandedComments] = useState<number | null>(null);
     const [commentsMap, setCommentsMap] = useState<Record<number, any[]>>({});
     const [commentInput, setCommentInput] = useState('');
-    const [commentAuthor, setCommentAuthor] = useState('');
-    const [userName, setUserName] = useState('Utilisateur');
 
-    // Verrou pour éviter les erreurs "InvalidStateError" sur navigator.share (un seul partage à la fois)
     const isSharingRef = useRef(false);
 
-    // Charger les données initiales
+    // Charger les données initiales via la session NextAuth (toujours à jour)
     useEffect(() => {
-        const saved = localStorage.getItem('cleanspot_username');
-        const effectiveName = saved || 'Utilisateur';
-        if (saved) {
-            setUserName(saved);
-            setCommentAuthor(saved);
-        }
-        loadEvents(effectiveName);
-    }, []);
+        const initPage = async () => {
+            if (session?.user) {
+                const fullUserName = session.user.name || "Utilisateur";
+                const id = session.user.id ? Number(session.user.id) : null;
 
-    const loadEvents = async (userOverride?: string) => {
-        const currentUserName = userOverride || userName;
-        setLoading(true);
-        const res = await getSpotsFromDb();
-        if (res.success) {
-            const filteredData = res.data.filter((s: any) => s.type === 'Event' || s.type === 'Signalement');
-            setAllEvents(filteredData);
+                setUserId(id);
+                setUserName(fullUserName);
+                setCommentAuthor(fullUserName);
 
-            for (const ev of filteredData) {
-                // Participations
-                const pRes = await getParticipations(ev.id);
-                if (pRes.success) {
-                    setParticipationCounts(prev => ({ ...prev, [ev.id]: pRes.count ?? 0 }));
-                    setUserParticipations(prev => ({
-                        ...prev,
-                        [ev.id]: (pRes.data ?? []).some((p: any) => p.userName === currentUserName),
-                    }));
-                }
-
-                // Favoris
-                const fRes = await getFavorites(ev.id);
-                if (fRes.success) {
-                    setUserFavorites(prev => ({
-                        ...prev,
-                        [ev.id]: (fRes.data ?? []).some((f: any) => f.userName === currentUserName),
-                    }));
-                }
+                await loadEvents(fullUserName);
+            } else {
+                await loadEvents();
             }
+        };
+        initPage();
+    }, [session]);
+
+    const loadEvents = async (currentUserName?: string) => {
+        setLoading(true);
+        try {
+            const res = await getSpotsFromDb();
+            if (res.success && res.data) {
+                setAllEvents(res.data);
+                setDbSpots(res.data);
+
+                const participations: Record<number, boolean> = {};
+                const counts: Record<number, number> = {};
+                const favorites: Record<number, boolean> = {};
+
+                res.data.forEach((spot: any) => {
+                    counts[spot.id] = spot.participants?.length || 0;
+                    if (currentUserName) {
+                        // On vérifie avec le format "id - prenom nom" ET le nom seul (compatibilité)
+                        participations[spot.id] = spot.participants?.some((p: string) =>
+                            p === currentUserName || p.endsWith(`- ${currentUserName}`) || p.includes(`- ${currentUserName}`)
+                        );
+
+                        // Même logique pour les favoris
+                        favorites[spot.id] = spot.favorites?.some((f: string) =>
+                            f === currentUserName || f.endsWith(`- ${currentUserName}`) || f.includes(`- ${currentUserName}`)
+                        );
+                    }
+                });
+
+                setUserParticipations(participations);
+                setParticipationCounts(counts);
+                setUserFavorites(favorites);
+            }
+        } catch (err) {
+            console.error("Erreur chargement:", err);
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
     };
 
     // --- Géolocalisation ---
@@ -257,58 +279,77 @@ export default function EventPage() {
 
     // --- Handlers ---
     const handleCreateSpot = async (data: any) => {
-        const res = await createSpot(data);
+        const tempId = session?.user?.id || '0';
+        const tempName = session?.user?.name || 'Anonyme';
+
+        const spotData = {
+            ...data,
+            author: `${tempId} - ${tempName}`
+        };
+
+        const res = await createSpot(spotData);
+
         if (res.success) {
-            const typeLabel = data.type === 'Event' ? 'Événement' : 'Signalement';
-            showNotification(`${typeLabel} créé avec succès !`, "success");
-        } else {
-            showNotification(`Erreur lors de la création du ${data.type === 'Event' ? 'événement' : 'signalement'}.`, "error");
+            showNotification("Créé avec succès !", "success");
         }
         setShowForm(false);
-        await loadEvents();
+        await loadEvents(tempName);
     };
 
+
     const handleParticipate = async (spotId: number) => {
-        const res = await toggleParticipation(spotId, userName);
-        if (res.success) {
-            setUserParticipations(prev => ({ ...prev, [spotId]: res.participating ?? false }));
-            setParticipationCounts(prev => ({
-                ...prev,
-                [spotId]: (prev[spotId] || 0) + (res.participating ? 1 : -1),
-            }));
+        // On vérifie le userId du state
+        if (!userId) {
+            showNotification("Vous devez être connecté", "error");
+            return;
+        }
+
+        // On cherche le spot dans le state dbSpots
+        const spot = dbSpots.find(s => s.id === spotId);
+        const currentCount = participationCounts[spotId] || 0;
+
+        if (!userParticipations[spotId] && spot?.type === "Signalement" && currentCount >= 5) {
+            showNotification("Limite atteinte", "error");
+            return;
+        }
+
+        try {
+            // Format stocké en DB : "id - prenom nom"
+            const userIdentifier = userId ? `${userId} - ${userName}` : userName;
+            const res = await toggleParticipation(spotId, userIdentifier) as any;
+
+            if (res.success) {
+                setUserParticipations(prev => ({ ...prev, [spotId]: res.participating }));
+                setParticipationCounts(prev => ({
+                    ...prev,
+                    [spotId]: res.participating ? (prev[spotId] || 0) + 1 : Math.max(0, (prev[spotId] || 0) - 1)
+                }));
+                showNotification(res.participating ? "Inscrit !" : "Retiré", "success");
+            }
+        } catch (error) {
+            console.error(error);
         }
     };
 
     const handleFavorite = async (spotId: number) => {
-        const res = await toggleFavorite(spotId, userName);
-        if (res.success) {
-            setUserFavorites(prev => ({ ...prev, [spotId]: res.favorited ?? false }));
-        }
-    };
-
-    const handleToggleComments = async (spotId: number) => {
-        if (expandedComments === spotId) {
-            setExpandedComments(null);
+        if (!userId) {
+            showNotification("Vous devez être connecté", "error");
             return;
         }
-        setExpandedComments(spotId);
-        const res = await getComments(spotId);
+
+        const userIdentifier = `${userId} - ${userName}`;
+        const res = await toggleFavorite(spotId, userIdentifier);
+
         if (res.success) {
-            setCommentsMap(prev => ({ ...prev, [spotId]: res.data }));
+            setUserFavorites(prev => ({
+                ...prev,
+                [spotId]: res.favorited ?? false
+            }));
+            showNotification(res.favorited ? "Ajouté aux favoris" : "Retiré des favoris", "success");
         }
     };
 
-    const handleAddComment = async (spotId: number) => {
-        if (!commentInput.trim() || !commentAuthor.trim()) return;
-        const res = await addComment(spotId, commentAuthor, commentInput);
-        if (res.success) {
-            setCommentInput('');
-            const cRes = await getComments(spotId);
-            if (cRes.success) {
-                setCommentsMap(prev => ({ ...prev, [spotId]: cRes.data }));
-            }
-        }
-    };
+
 
     const toggleMaterialFilter = (label: string) => {
         setSelectedMaterials(prev =>
@@ -398,7 +439,6 @@ export default function EventPage() {
 
     return (
         <div className="bg-[#f4f6f5] text-foreground min-h-screen">
-            <NavBar />
             <main className="max-w-[1400px] mx-auto px-4 md:px-8 py-4 md:py-6 flex flex-col lg:flex-row gap-6">
                 {/* Sidebar - Filtres */}
                 <aside className="w-full lg:w-64 flex-shrink-0 lg:sticky lg:top-6 lg:self-start space-y-4">
@@ -757,9 +797,9 @@ export default function EventPage() {
                                                 </button>
                                                 <button
                                                     onClick={() => handleFavorite(event.id)}
-                                                    className={`w-8 h-8 ${isFav ? 'bg-rose-500 text-white' : 'bg-white/90 backdrop-blur-md text-rose-500'} rounded-lg flex items-center justify-center shadow-lg hover:scale-110 transition-all`}
+                                                    className={`w-8 h-8 ${isFav ? 'bg-yellow-400 text-white' : 'bg-white/90 backdrop-blur-md text-yellow-500'} rounded-lg flex items-center justify-center shadow-lg hover:scale-110 transition-all`}
                                                 >
-                                                    <span className="material-icons-outlined text-lg">{isFav ? 'favorite' : 'favorite_border'}</span>
+                                                    <span className="material-icons-outlined text-lg">{isFav ? 'star' : 'star_border'}</span>
                                                 </button>
                                             </div>
                                         </div>
@@ -812,69 +852,7 @@ export default function EventPage() {
                                                         <span className="ml-0.5 px-1.5 py-0.5 bg-white/20 rounded-full text-[9px]">{pCount}</span>
                                                     )}
                                                 </button>
-                                                <button
-                                                    onClick={() => handleToggleComments(event.id)}
-                                                    className={`px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${isCommentsOpen ? 'bg-[#1a2f28] text-white' : 'bg-slate-100 text-[#1a2f28] hover:bg-slate-200'
-                                                        }`}
-                                                >
-                                                    <span className="material-icons-outlined text-sm">chat_bubble_outline</span>
-                                                    <span className="text-[10px]">{spotComments.length > 0 ? spotComments.length : ''}</span>
-                                                </button>
                                             </div>
-
-                                            {/* Commentaires */}
-                                            {isCommentsOpen && (
-                                                <div className="mt-4 pt-4 border-t border-slate-100 space-y-3">
-                                                    {spotComments.length === 0 && (
-                                                        <p className="text-xs text-slate-400 text-center italic py-3">Aucun commentaire pour le moment</p>
-                                                    )}
-                                                    {spotComments.map((c: any) => (
-                                                        <div key={c.id} className="flex gap-3">
-                                                            <div className="w-8 h-8 bg-[#1a2f28] rounded-full flex items-center justify-center flex-shrink-0">
-                                                                <span className="text-white text-xs font-bold">{c.author?.[0]?.toUpperCase()}</span>
-                                                            </div>
-                                                            <div className="flex-1">
-                                                                <p className="text-xs font-bold text-[#1a2f28]">
-                                                                    {c.author}
-                                                                    <span className="font-normal text-slate-400 ml-2">
-                                                                        {c.createdAt ? new Date(c.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : ''}
-                                                                    </span>
-                                                                </p>
-                                                                <p className="text-sm text-slate-500 mt-0.5">{c.content}</p>
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                    <div className="flex gap-2 pt-3">
-                                                        <input
-                                                            type="text"
-                                                            placeholder="Votre nom"
-                                                            value={commentAuthor}
-                                                            onChange={(e) => {
-                                                                const val = e.target.value;
-                                                                setCommentAuthor(val);
-                                                                setUserName(val || 'Utilisateur');
-                                                                localStorage.setItem('cleanspot_username', val);
-                                                            }}
-                                                            className="w-28 px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-[#33a17b]/30"
-                                                        />
-                                                        <input
-                                                            type="text"
-                                                            placeholder="Écrire un commentaire..."
-                                                            value={commentInput}
-                                                            onChange={(e) => setCommentInput(e.target.value)}
-                                                            onKeyDown={(e) => e.key === 'Enter' && handleAddComment(event.id)}
-                                                            className="flex-1 px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-[#33a17b]/30"
-                                                        />
-                                                        <button
-                                                            onClick={() => handleAddComment(event.id)}
-                                                            disabled={!commentInput.trim() || !commentAuthor.trim()}
-                                                            className="px-4 py-2.5 bg-[#1a2f28] text-white rounded-xl text-xs font-bold hover:bg-[#2a453c] transition-all disabled:opacity-40"
-                                                        >
-                                                            <span className="material-icons-outlined text-base">send</span>
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            )}
                                         </div>
                                     </div>
                                 );
@@ -917,7 +895,7 @@ export default function EventPage() {
                                 className="flex items-center gap-2 px-8 py-3.5 bg-[#33a17b] text-white text-sm font-bold rounded-2xl hover:bg-[#288a68] shadow-xl transition-all hover:-translate-y-1 active:scale-95"
                             >
                                 <span className="material-icons-outlined text-lg">add</span>
-                                Créer un événement
+                                {session?.user?.statut_pro === 'Association' ? 'Créer un événement' : 'Signaler un spot'}
                             </button>
                         </div>
                     )}

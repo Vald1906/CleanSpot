@@ -78,14 +78,14 @@ const MapContent = memo(({ onSelectSpot, selectedSpot, dbSpots, zoomLevel, setZo
             <RecenterMap spot={selectedSpot} />
             <ZoomHandler onZoomChange={setZoomLevel} />
 
-            {showMarkers && dbSpots?.map((spot: any) => {
+            {showMarkers && dbSpots?.map((spot: any, index: number) => { // Ajoutez index ici
                 if (!spot.latitude || !spot.longitude) return null;
                 const visuals = getVisualsByType(spot.type);
                 const isActive = selectedSpot?.id === spot.id;
 
                 return (
                     <Marker
-                        key={`marker-${spot.id}-${isActive}`}
+                        key={`marker-${spot.id}-${index}-${isActive}`} // Utilisez index pour garantir l'unicité
                         position={[spot.latitude, spot.longitude]}
                         icon={createCustomIcon(visuals.icon, visuals.color, isActive)}
                         eventHandlers={{

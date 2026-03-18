@@ -1,18 +1,29 @@
 "use server";
 
 import { db } from "@/db/drizzle";
-import { users } from "@/db/schema";
+import { user, associations } from "@/db/schema";
 import { eq, or } from "drizzle-orm";
 
-export async function getUserByName(name: string) {
+export async function getUserByName(identifier: string) {
     try {
-        // On cherche par nom ou prénom pour être flexible
-        const data = await db.select()
-            .from(users)
+        const data = await db.select({
+            id: user.id,
+            email: user.email,
+            roles: user.roles,
+            password: user.password,
+            nom: user.nom,
+            statut_pro: user.statut_pro,
+            prenom: user.prenom,
+            createdAt: user.createdAt,
+            isVerified: associations.isVerified,
+        })
+            .from(user)
+            .leftJoin(associations, eq(user.id, associations.userId))
             .where(
                 or(
-                    eq(users.nom, name),
-                    eq(users.prenom, name)
+                    eq(user.email, identifier),
+                    eq(user.nom, identifier),
+                    eq(user.prenom, identifier)
                 )
             )
             .limit(1);

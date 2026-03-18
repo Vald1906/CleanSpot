@@ -1,14 +1,35 @@
 "use server";
 import { db } from "@/db/drizzle";
-// AJOUT de archived_spots dans l'import ci-dessous
-import { spots, archived_spots, comments, participations, favorites } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { spots, archived_spots, comments, participations, favorites, user } from "@/db/schema";
+import { eq, and, inArray, or } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { desc, asc } from "drizzle-orm";
+import { sql } from "drizzle-orm";
+import { createNotification } from "./notificationActions";
 
 // ---------- READ ----------
+// À mettre à jour dans spotActions.ts
 export async function getSpotsFromDb() {
     try {
-        const data = await db.select().from(spots);
+        const allSpots = await db.select().from(spots);
+        const allParticipations = await db.select().from(participations);
+        const allFavorites = await db.select().from(favorites);
+
+        const data = allSpots.map(spot => {
+            const spotParticipations = allParticipations.filter(p => p.spotId === spot.id);
+            const spotFavorites = allFavorites.filter(f => f.spotId === spot.id);
+
+            return {
+                ...spot,
+                // On remplace le compteur statique par le nombre réel de participations trouvées
+                participants_count: spotParticipations.length,
+                // On garde notre liste de noms pour le bouton
+                participants: spotParticipations.map(p => p.userName),
+                // On ajoute la liste des favoris pour la page
+                favorites: spotFavorites.map(f => f.userName)
+            };
+        });
+
         return { success: true, data };
     } catch (error) {
         console.error("Erreur DB:", error);
@@ -24,6 +45,56 @@ export async function getArchivedSpotsFromDb() {
     } catch (error) {
         console.error("Erreur DB Archived:", error);
         return { success: false, data: [] };
+    }
+}
+
+// ========== ARCHIVAGE ==========
+
+export async function archiveSpot(id: number) {
+    try {
+        const spotToArchive = await db.select()
+            .from(spots)
+            .where(eq(spots.id, id))
+            .then(rows => rows[0]);
+
+        if (!spotToArchive) {
+            return { success: false, error: "Spot introuvable" };
+        }
+
+        // 1. Récupérer les favoris avant de supprimer le spot
+        const spotFavorites = await db.select().from(favorites).where(eq(favorites.spotId, id));
+
+        // 2. Archiver le spot
+        await db.insert(archived_spots).values({
+            ...spotToArchive,
+        });
+
+        await db.delete(spots).where(eq(spots.id, id));
+
+        // 3. Notifier les utilisateurs qui avaient ce spot en favori
+        for (const fav of spotFavorites) {
+            // L'identifiant est au format "ID - Nom"
+            const userIdMatch = fav.userName.match(/^(\d+) -/);
+            if (userIdMatch) {
+                const uid = parseInt(userIdMatch[1]);
+                await createNotification({
+                    userId: uid,
+                    title: "Spot terminé",
+                    message: `Le spot "${spotToArchive.title}" a été archivé car il est terminé.`,
+                    type: 'Info'
+                });
+            } else {
+                console.warn(`Impossible de notifier l'utilisateur ${fav.userName} : ID non trouvé.`);
+            }
+        }
+
+        revalidatePath("/event");
+        revalidatePath("/map");
+
+        return { success: true };
+    } catch (error) {
+        console.error("Erreur lors de l'archivage du spot:", error);
+        return { success: false, error: String(error) };
     }
 }
 
@@ -138,25 +209,29 @@ export async function deleteSpot(id: number) {
 
 // ========== COMMENTAIRES ==========
 
-export async function getComments(spotId: number) {
+export async function addComment({ spotId, author, content }: { spotId: number, author: string, content: string }) {
     try {
-        const data = await db.select().from(comments).where(eq(comments.spotId, spotId));
-        return { success: true, data };
-    } catch (error) {
-        console.error("Erreur récupération commentaires:", error);
-        return { success: false, data: [] };
+        await db.insert(comments).values({
+            spotId,
+            author,
+            content,
+        });
+        return { success: true };
+    } catch (error: any) {
+        console.error("Erreur addComment:", error);
+        return { success: false, error: error.message };
     }
 }
-
-export async function addComment(spotId: number, author: string, content: string) {
+// Optionnel : s'assurer que getComments récupère par date
+export async function getComments(spotId: number) {
     try {
-        await db.insert(comments).values({ spotId, author, content });
-        revalidatePath("/event");
-        revalidatePath("/map");
-        return { success: true };
+        const data = await db.select()
+            .from(comments)
+            .where(eq(comments.spotId, spotId))
+            .orderBy(asc(comments.createdAt)); // Les plus vieux en haut, nouveaux en bas
+        return { success: true, data };
     } catch (error) {
-        console.error("Erreur ajout commentaire:", error);
-        return { success: false, error: String(error) };
+        return { success: false, data: [] };
     }
 }
 
@@ -239,19 +314,66 @@ export async function toggleFavorite(spotId: number, userName: string) {
 }
 // ========== PROFIL UTILISATEUR ==========
 
-export async function getUserProfileData(userName: string) {
+export async function getUserProfileData(userName: string, userFullIdentity?: string) {
     try {
-        // 1. Spots créés par l'utilisateur
-        const createdSpots = await db.select().from(spots).where(eq(spots.author, userName));
+        const fullId = userFullIdentity || userName;
+        
+        // 1. Spots actifs créés par l'utilisateur
+        const createdActiveSpots = await db.select().from(spots).where(
+            or(eq(spots.author, userName), eq(spots.author, fullId))
+        );
 
-        // 2. Spots où l'utilisateur participe
-        const participatedEntries = await db.select().from(participations).where(eq(participations.userName, userName));
-        const participatedSpots = participatedEntries.length > 0
-            ? await db.select().from(spots).where(inArray(spots.id, participatedEntries.map(p => p.spotId)))
-            : [];
+        // 2. Spots archivés créés par l'utilisateur
+        const createdArchivedSpots = await db.select().from(archived_spots).where(
+            or(eq(archived_spots.author, userName), eq(archived_spots.author, fullId))
+        );
 
-        // 3. Spots favoris de l'utilisateur
-        const favoriteEntries = await db.select().from(favorites).where(eq(favorites.userName, userName));
+        // Fusionner et ajouter le statut
+        const createdSpots = [
+            ...createdActiveSpots.map(s => ({ ...s, status: 'en cours' })),
+            ...createdArchivedSpots.map(s => ({ ...s, status: 'terminé' }))
+        ].sort((a, b) => {
+            const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+            return dateB - dateA;
+        });
+
+        // 3. Participations (actives et archivées)
+        const participatedEntries = await db.select().from(participations).where(
+            or(eq(participations.userName, fullId), eq(participations.userName, userName))
+        );
+
+        let participatedSpots: any[] = [];
+        if (participatedEntries.length > 0) {
+            const spotIds = participatedEntries.map(p => p.spotId);
+            
+            // Chercher dans les spots actifs
+            const activeParticipated = await db.select().from(spots).where(inArray(spots.id, spotIds));
+            
+            // Chercher dans les spots archivés
+            const archivedParticipated = await db.select().from(archived_spots).where(inArray(archived_spots.id, spotIds));
+
+            // Fusionner avec les infos de présence
+            participatedSpots = [
+                ...activeParticipated.map(s => ({ ...s, status: 'en cours' })),
+                ...archivedParticipated.map(s => ({ ...s, status: 'terminé' }))
+            ].map(spot => {
+                const pEntry = participatedEntries.find(p => p.spotId === spot.id);
+                return {
+                    ...spot,
+                    presence: pEntry ? pEntry.presence : null
+                };
+            }).sort((a, b) => {
+                const dateA = a.date ? new Date(a.date).getTime() : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+                const dateB = b.date ? new Date(b.date).getTime() : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+                return dateB - dateA;
+            });
+        }
+
+        // 4. Spots favoris de l'utilisateur (utilise le format unifié id - nom)
+        const favoriteEntries = await db.select().from(favorites).where(
+            or(eq(favorites.userName, fullId), eq(favorites.userName, userName))
+        );
         const favoriteSpots = favoriteEntries.length > 0
             ? await db.select().from(spots).where(inArray(spots.id, favoriteEntries.map(f => f.spotId)))
             : [];
@@ -269,3 +391,5 @@ export async function getUserProfileData(userName: string) {
         return { success: false, error: String(error) };
     }
 }
+
+

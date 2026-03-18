@@ -7,7 +7,7 @@ export default defineConfig({
     schema: "src/db/schema.ts",
     out: "./migrations",
     dialect: 'mysql',
-    tablesFilter: ["comments", "favorites", "participations", "spots", "user"],
+    tablesFilter: ["comments", "favorites", "participations", "spots", "user", "notifications", "archived_spots"],
     dbCredentials: {
         url: process.env.DATABASE_URL!
     }
