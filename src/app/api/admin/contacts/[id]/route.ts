@@ -7,7 +7,7 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route"; // Try to get 
 
 export async function DELETE(
     request: Request,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
         const session = await getServerSession(authOptions);
@@ -20,7 +20,8 @@ export async function DELETE(
             );
         }
 
-        const id = parseInt(params.id, 10);
+        const { id: rawId } = await params;
+        const id = parseInt(rawId, 10);
         if (isNaN(id)) {
             return NextResponse.json(
                 { message: "ID invalide." },
