@@ -4,6 +4,7 @@ import { db } from "@/db/drizzle";
 import { user, associations } from "@/db/schema";
 import { hash } from "bcryptjs";
 import { redirect } from "next/navigation";
+import { eq } from "drizzle-orm";
 
 export async function handleRegister(prevState: any, formData: FormData) {
     const statut_pro = formData.get("statut_pro") as string;
@@ -37,6 +38,21 @@ export async function handleRegister(prevState: any, formData: FormData) {
     }
 
     const hashedPassword = await hash(password, 12);
+    
+    // Vérification de l'existence de l'email AVANT toute opération
+    const [existingUser] = await db.select().from(user).where(eq(user.email, email)).limit(1);
+
+    if (existingUser) {
+        return { error: "Cet email est déjà utilisé." };
+    }
+
+    // Si c'est une association, on vérifie aussi le RNA
+    if (statut_pro === "Association" && rnaNumber) {
+        const [existingAsso] = await db.select().from(associations).where(eq(associations.rnaNumber, rnaNumber)).limit(1);
+        if (existingAsso) {
+            return { error: "Ce numéro RNA est déjà utilisé." };
+        }
+    }
 
     try {
         await db.transaction(async (tx) => {
@@ -63,13 +79,16 @@ export async function handleRegister(prevState: any, formData: FormData) {
             }
         });
     } catch (error: any) {
+        // En cas de conflit résiduel (si checks ratés par race condition)
         if (error.code === 'ER_DUP_ENTRY') {
             if (error.message.includes('rna_number')) {
                 return { error: "Ce numéro RNA est déjà utilisé." };
             }
             return { error: "Cet email est déjà utilisé." };
         }
-        console.error("Registration error:", error);
+        
+        // Log uniquement les erreurs inattendues
+        console.error("Unexpected registration error:", error);
         return { error: "Une erreur est survenue lors de l'inscription." };
     }
 
