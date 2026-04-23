@@ -150,8 +150,8 @@ test.describe('Functional Tests - Authentication (10 tests)', () => {
   test('19. Should display user type selector (Particulier/Association)', async ({ page }) => {
     await page.goto('/register', NAV_OPTS);
     await page.waitForLoadState('domcontentloaded');
-    await expect(page.locator('select')).toBeVisible({ timeout: 10000 });
-    await expect(page.locator('select')).toHaveValue('Particulier');
+    await expect(page.locator('select').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('select').first()).toHaveValue('Particulier');
   });
 
   test('20. Should have "Se connecter" link on register page', async ({ page }) => {

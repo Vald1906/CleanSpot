@@ -40,11 +40,10 @@ test.describe('Functional Tests CleanSpot (10 tests)', () => {
     await expect(page.locator('input[type="email"], input[name="email"]')).toBeVisible();
   });
 
-  // Test 6: La page Map doit se charger correctement
-  test('6. Should display the Map page', async ({ page }) => {
+  // Test 6: La page Map doit rediriger si non loggué (Route protégée)
+  test('6. Should redirect from map to login if unauthenticated', async ({ page }) => {
     await page.goto('/map');
-    // Either map container or specific div exists
-    await expect(page.locator('.leaflet-container').or(page.locator('#map'))).toBeAttached();
+    await expect(page).toHaveURL(/.*(login|signin).*/);
   });
 
   // Test 7: Vérifier le dashboard redirection si non loggué (Route protégée)
