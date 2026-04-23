@@ -1,95 +1,138 @@
-# Documentation Technique des Tests - CleanSpot
+# 🧪 Documentation Stratégique des Tests - CleanSpot
 
-Cette documentation présente l'architecture, la stratégie et les procédures d'exécution des tests du projet CleanSpot. Elle est structurée pour démontrer la robustesse et la fiabilité de l'application selon les standards modernes du développement web.
-
-## 1. Architecture des Tests (Modèle MVC)
-
-L'architecture de test suit le découpage du projet en **Modèle-Vue-Contrôleur** :
-
-*   **Tests Unitaires (Modèle)** : Valident la logique métier pure dans `src/tests/unit/`.
-*   **Tests Fonctionnels (Vue)** : Valident le rendu des composants dans `src/tests/functional/` avec RTL.
-*   **Tests End-to-End (Contrôleur & Flux)** : Valident les parcours utilisateurs dans `tests-e2e/` avec Playwright.
+Cette documentation détaille l'écosystème de tests mis en place pour garantir la fiabilité, la performance et la sécurité de la plateforme **CleanSpot**. Elle est structurée pour démontrer une maîtrise complète du cycle de vie logiciel selon le modèle **MVC**.
 
 ---
 
-## 2. Extraits de Code Pédagogiques
+## 1. Architecture des Tests & Alignement MVC
 
-### 2.1. Tests Unitaires (Logique Pure)
-*Fichier concerné : `src/tests/unit/logic.test.ts`*
+L'application suit une séparation stricte des responsabilités, validée par trois niveaux de tests :
 
+| Niveau | Cible MVC | Technologie | Objectif |
+| :--- | :--- | :--- | :--- |
+| **Unitaires** | **Modèle** (Logic) | Vitest | Valider les algorithmes métier et les utilitaires. |
+| **Fonctionnels** | **Vue** (UI/UX) | RTL & Vitest | Garantir que les composants réagissent correctement aux actions. |
+| **End-to-End** | **Contrôleur** (Flux) | Playwright | Simuler des parcours réels dans un navigateur piloté. |
+
+---
+
+## 2. Focus sur les Tests Unitaires (Logique Métier)
+*Localisation : `src/tests/unit/`*
+
+Ces tests sont isolés et n'utilisent pas le DOM. Ils valident les "fonctions pures".
+
+### 2.1. Calcul de Distance (Géolocalisation)
+Cet extrait montre comment nous validons la précision des calculs GPS via la formule de Haversine.
 ```typescript
-// Exemple 1 : Validation d'un calcul mathématique de base
-it('devrait retourner le résultat correct d\'une addition simple', () => {
-    const result = 1 + 2;
-    expect(result).toBe(3);
-});
-
-// Exemple 2 : Validation de la formule Haversine (calcul de distance entre deux points GPS)
-it('haversineKm devrait calculer ~0 km pour des coordonnées identiques', () => {
-    const parisLat = 48.8566, parisLon = 2.3522;
-    const dist = haversineKm(parisLat, parisLon, parisLat, parisLon);
-    expect(dist).toBeCloseTo(0, 5);
+it('haversineKm devrait calculer ~462 km entre Paris et Lyon', () => {
+    const paris = { lat: 48.8566, lon: 2.3522 };
+    const lyon = { lat: 45.7640, lon: 4.8357 };
+    
+    const dist = haversineKm(paris.lat, paris.lon, lyon.lat, lyon.lon);
+    
+    expect(dist).toBeGreaterThan(380);
+    expect(dist).toBeLessThan(500);
 });
 ```
 
-### 2.2. Tests Fonctionnels (Rendu Composants)
-*Fichiers concernés : `src/tests/functional/*.test.tsx`*
-
+### 2.2. Gestion du Calendrier Éco-Citoyen
+Validation de la logique temporelle pour l'affichage des événements.
 ```typescript
-// Exemple 1 : Test de l'interaction utilisateur sur un bouton
-it('devrait appeler la fonction onClose() lors du clic sur le bouton annuler', () => {
+it('getDaysInMonth devrait retourner 29 pour février 2024 (année bissextile)', () => {
+    const days = getDaysInMonth(2024, 1); // Index 1 = Février
+    expect(days).toBe(29);
+});
+```
+
+**Commande d'exécution ciblée :**
+```bash
+npx vitest run src/tests/unit
+```
+
+---
+
+## 3. Focus sur les Tests Fonctionnels (Composants)
+*Localisation : `src/tests/functional/`*
+
+Ces tests simulent le rendu React et les interactions utilisateur (clics, saisies).
+
+### 3.1. Soumission du Formulaire de Contact
+Validation de l'appel API asynchrone et du retour visuel.
+```typescript
+it('devrait afficher un message de succès après une soumission valide', async () => {
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
+    render(<ContactPage />);
+
+    fireEvent.change(screen.getByPlaceholderText("Nom"), { target: { value: "Martin" } });
+    fireEvent.submit(screen.getByRole("button", { name: /Envoyer le message/i }));
+
+    await waitFor(() => {
+        expect(screen.getByText(/Message envoyé !/i)).toBeInTheDocument();
+    });
+});
+```
+
+### 3.2. Gestion d'État de la Modal d'Événement
+Vérification que les props de rappel (callbacks) sont déclenchées.
+```typescript
+it('devrait déclencher onClose lors du clic sur le bouton Annuler', () => {
     const mockOnClose = vi.fn();
     render(<SpotFormModal isOpen={true} onClose={mockOnClose} mode="create" />);
     
-    const cancelButton = screen.getByText('Annuler');
-    fireEvent.click(cancelButton);
-    
+    fireEvent.click(screen.getByText("Annuler"));
     expect(mockOnClose).toHaveBeenCalledTimes(1);
-});
-
-// Exemple 2 : Vérification du rendu initial d'une page
-it('devrait afficher le titre de la page de contact correctement', () => {
-    render(<ContactPage />);
-    expect(screen.getByText(/Envoyez-nous un message/i)).toBeInTheDocument();
 });
 ```
 
-### 2.3. Tests End-to-End (Navigation & Flux Réel)
-*Fichiers concernés : `tests-e2e/*.spec.ts`*
-
-```typescript
-// Exemple 1 : Navigation vers la page d'accueil
-test('devrait naviguer vers la page d\'accueil et vérifier le titre', async ({ page }) => {
-    await page.goto('/');
-    await expect(page).toHaveTitle(/CleanSpot/i);
-});
-
-// Exemple 2 : Vérification de la présence du formulaire de contact
-test('devrait afficher le formulaire de contact sur la page dédiée', async ({ page }) => {
-    await page.goto('/contact');
-    await expect(page.locator('form')).toBeVisible();
-});
+**Commande d'exécution ciblée :**
+```bash
+npx vitest run src/tests/functional
 ```
 
 ---
 
-## 3. Commandes de Lancement
+## 4. Focus sur les Tests End-to-End (Parcours Complets)
+*Localisation : `src/tests/e2e/`*
 
-Voici les commandes pour exécuter les différentes suites de tests :
+Simulation réelle dans un navigateur (Chromium) pour tester la navigation et l'intégration.
 
-### Lancer les Tests Unitaires et Fonctionnels (Vitest)
-```bash
-npm run test
+### 4.1. Navigation vers l'Inscription
+Vérification de la continuité du parcours utilisateur.
+```typescript
+test('devrait naviguer de la page de connexion vers la page d\'inscription', async ({ page }) => {
+    await page.goto('/login');
+    await page.click('a:has-text("Créer un compte")');
+    await expect(page).toHaveURL(/.*register.*/);
+});
 ```
-*Note : Cette commande lance Vitest qui scanne tous les fichiers `.test.tsx` dans `src/tests`.*
 
-### Lancer les Tests End-to-End (Playwright)
-```bash
-npx playwright test
+### 4.2. Interaction avec la Barre de Recherche (Map)
+Validation de la réactivité de l'interface cartographique.
+```typescript
+test('devrait permettre de saisir une ville dans la barre de recherche', async ({ page }) => {
+    await page.goto('/map');
+    const searchInput = page.locator('input[placeholder="Rechercher un lieu..."]');
+    await searchInput.fill('Paris');
+    await expect(searchInput).toHaveValue('Paris');
+});
 ```
-*Note : Assurez-vous que le serveur de développement est lancé (`npm run dev`) si vous n'utilisez pas le mode CI.*
 
-### Voir le rapport détaillé des tests E2E
+**Commande d'exécution ciblée :**
 ```bash
-npx playwright show-report
+npx playwright test src/tests/e2e
 ```
+
+---
+
+## 5. Résumé des Commandes
+
+| Type | Commande |
+| :--- | :--- |
+| **Global** | `npm test` |
+| **Unitaires** | `npx vitest run src/tests/unit` |
+| **Fonctionnels** | `npx vitest run src/tests/functional` |
+| **End-to-End** | `npx playwright test` |
+| **Interface UI E2E** | `npx playwright test --ui` |
+
+---
+*Documentation générée pour la soutenance technique - CleanSpot 2026*
