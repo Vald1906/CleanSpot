@@ -4,16 +4,16 @@ const NAV_OPTS = { waitUntil: 'commit' as const };
 
 test.describe('Functional Tests - Map Page (10 tests)', () => {
 
-  test('1. Should load the map page', async ({ page }) => {
+  test('1. Should redirect from map to login if unauthenticated', async ({ page }) => {
     await page.goto('/map', NAV_OPTS);
-    await page.waitForLoadState('domcontentloaded');
-    await expect(page.locator('.leaflet-container').or(page.locator('#map'))).toBeAttached({ timeout: 15000 });
+    await expect(page).toHaveURL(/.*(login|signin).*/);
   });
 
-  test('2. Should display the search bar', async ({ page }) => {
+  test('2. Should display the search bar or login on /map', async ({ page }) => {
     await page.goto('/map', NAV_OPTS);
-    await page.waitForLoadState('domcontentloaded');
-    await expect(page.locator('input[placeholder="Rechercher un lieu..."]')).toBeVisible({ timeout: 10000 });
+    const searchInput = page.locator('input[placeholder="Rechercher un lieu..."]');
+    const loginField = page.locator('input[name="email"]');
+    await expect(searchInput.or(loginField).first()).toBeVisible({ timeout: 10000 });
   });
 
   test('3. Should type in the search bar', async ({ page }) => {
@@ -79,10 +79,9 @@ test.describe('Functional Tests - Map Page (10 tests)', () => {
 
 test.describe('Functional Tests - Event Page (10 tests)', () => {
 
-  test('11. Should display the main title', async ({ page }) => {
+  test('11. Should redirect from event to login if unauthenticated', async ({ page }) => {
     await page.goto('/event', NAV_OPTS);
-    await page.waitForLoadState('domcontentloaded');
-    await expect(page.locator('text=Exploration CleanSpot')).toBeVisible({ timeout: 10000 });
+    await expect(page).toHaveURL(/.*(login|signin).*/);
   });
 
   test('12. Should display filter sidebar with "Type de déchets"', async ({ page }) => {

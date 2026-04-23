@@ -37,7 +37,7 @@ test.describe('Functional Tests CleanSpot (10 tests)', () => {
   // Test 5: Affichage de la page d'inscription
   test('5. Should display register page with form inputs', async ({ page }) => {
     await page.goto('/register');
-    await expect(page.locator('input[type="email"], input[name="email"]')).toBeVisible();
+    await expect(page.locator('input[type="email"], input[name="email"]').first()).toBeVisible();
   });
 
   // Test 6: La page Map doit rediriger si non loggué (Route protégée)

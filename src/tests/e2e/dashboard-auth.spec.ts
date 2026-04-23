@@ -7,7 +7,6 @@ test.describe('Functional Tests - Dashboard (10 tests)', () => {
 
   test('1. Should redirect to login if not authenticated', async ({ page }) => {
     await page.goto('/dashboard', NAV_OPTS);
-    await page.waitForLoadState('domcontentloaded');
     await expect(page.locator('body')).toBeVisible();
   });
 
@@ -110,17 +109,17 @@ test.describe('Functional Tests - Authentication (10 tests)', () => {
   test('14. Should allow filling login form', async ({ page }) => {
     await page.goto('/login', NAV_OPTS);
     await page.waitForLoadState('domcontentloaded');
-    await page.fill('input[type="email"]', 'test@test.com');
-    await page.fill('input[type="password"]', 'password123');
-    await expect(page.locator('input[type="email"]')).toHaveValue('test@test.com');
-    await expect(page.locator('input[type="password"]')).toHaveValue('password123');
+    await page.fill('form input[type="email"]', 'test@test.com');
+    await page.fill('form input[type="password"]', 'password123');
+    await expect(page.locator('form input[type="email"]')).toHaveValue('test@test.com');
+    await expect(page.locator('form input[type="password"]')).toHaveValue('password123');
   });
 
   test('15. Should show error on invalid credentials', async ({ page }) => {
     await page.goto('/login', NAV_OPTS);
     await page.waitForLoadState('domcontentloaded');
-    await page.fill('input[type="email"]', 'wrong@test.com');
-    await page.fill('input[type="password"]', 'wrongpassword');
+    await page.fill('form input[type="email"]', 'wrong@test.com');
+    await page.fill('form input[type="password"]', 'wrongpassword');
     await page.click('button:has-text("Se Connecter")');
     const error = page.locator('text=Email ou mot de passe incorrect');
     const button = page.locator('button:has-text("Se Connecter")');
