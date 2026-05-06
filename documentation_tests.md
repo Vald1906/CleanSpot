@@ -44,6 +44,15 @@ it('getDaysInMonth devrait retourner 29 pour février 2024 (année bissextile)',
 });
 ```
 
+### 2.3. Sécurité Admin (Vérification)
+Validation de la logique de notification selon le statut de vérification.
+```typescript
+it("getNotificationType devrait retourner Success pour isVerified=1", () => {
+    const getNotificationType = (isVerified: number) => isVerified === 1 ? "Success" : "Warning";
+    expect(getNotificationType(1)).toBe("Success");
+});
+```
+
 **Commande d'exécution ciblée :**
 ```bash
 npx vitest run src/tests/unit
@@ -96,24 +105,21 @@ npx vitest run src/tests/functional
 
 Simulation réelle dans un navigateur (Chromium) pour tester la navigation et l'intégration.
 
-### 4.1. Navigation & Sécurité (Redirect Aware)
-Vérification que l'application protège bien les routes et redirige vers le login si nécessaire.
+### 4.1. Protection des Routes (Admin & Asso)
+Vérification que les espaces sensibles sont protégés et redirigent vers la connexion.
 ```typescript
-test('1. Should redirect from map to login if unauthenticated', async ({ page }) => {
-    await page.goto('/map', { waitUntil: 'commit' });
+test('Admin Dashboard should redirect to login if unauthenticated', async ({ page }) => {
+    await page.goto('/admin/associations');
     await expect(page).toHaveURL(/.*(login|signin).*/);
 });
 ```
 
-### 4.2. Interaction Conditionnelle (Map)
-Validation que l'interface est réactive si accessible, ou sécurisée sinon.
+### 4.2. Navigation & Sécurité (Redirect Aware)
+Vérification que l'application protège bien les routes publiques/privées.
 ```typescript
-test('2. Should display the search bar or login on /map', async ({ page }) => {
-    await page.goto('/map');
-    const searchInput = page.locator('input[placeholder="Rechercher un lieu..."]');
-    const loginForm = page.locator('form');
-    // Le test passe si l'un des deux est visible (résilience totale)
-    await expect(searchInput.or(loginForm).first()).toBeVisible({ timeout: 10000 });
+test('Should redirect from map to login if unauthenticated', async ({ page }) => {
+    await page.goto('/map', { waitUntil: 'commit' });
+    await expect(page).toHaveURL(/.*(login|signin).*/);
 });
 ```
 

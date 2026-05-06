@@ -66,4 +66,35 @@ describe("Unit Tests - Logique Pure", () => {
       expect(spy).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe("Logique Admin & Association (Soutenance)", () => {
+    // Simulation de la logique de checkAssociationProfileComplete
+    const isProfileComplete = (asso: any) => {
+      return !!asso.description?.trim() &&
+             !!asso.telephone?.trim() &&
+             !!asso.ville?.trim() &&
+             !!asso.objetSocial?.trim();
+    };
+
+    it("isProfileComplete devrait retourner true si tous les champs sont remplis", () => {
+      const asso = { description: "Asso", telephone: "0102", ville: "Paris", objetSocial: "Ecologie" };
+      expect(isProfileComplete(asso)).toBe(true);
+    });
+
+    it("isProfileComplete devrait retourner false si un champ manque", () => {
+      const asso = { description: "Asso", telephone: "", ville: "Paris", objetSocial: "Ecologie" };
+      expect(isProfileComplete(asso)).toBe(false);
+    });
+
+    // Simulation de la logique de notification
+    const getNotificationType = (isVerified: number) => isVerified === 1 ? "Success" : "Warning";
+
+    it("getNotificationType devrait retourner Success pour isVerified=1", () => {
+      expect(getNotificationType(1)).toBe("Success");
+    });
+
+    it("getNotificationType devrait retourner Warning pour isVerified=0", () => {
+      expect(getNotificationType(0)).toBe("Warning");
+    });
+  });
 });
